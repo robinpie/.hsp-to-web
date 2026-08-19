@@ -1,0 +1,725 @@
+<title>Hypnospace .hsp Format</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;1,6..72,400&family=JetBrains+Mono:wght@400;700&display=swap">
+
+<style>
+:root {
+  /* The ground is the literal colour of the game's own 000.png background. */
+  --ground:      #faf9fc;
+  --surface:     #f2f0f7;
+  --surface-2:   #eae7f2;
+  --ink:         #16162a;
+  --ink-soft:    #3c3c58;
+  --muted:       #64648a;
+  --rule:        #ddd9ea;
+  --rule-soft:   #e9e6f2;
+  --accent:      #1f5f96;
+  --accent-soft: #dbe8f4;
+  --pop:         #a03076;
+  --bar:         #111126;
+  --bar-ink:     #cfd6ee;
+  --shadow:      0 1px 0 #ddd9ea;
+
+  --f-display: "Bricolage Grotesque", "Trebuchet MS", system-ui, sans-serif;
+  --f-body:    "Newsreader", Georgia, "Times New Roman", serif;
+  --f-mono:    "JetBrains Mono", ui-monospace, "DejaVu Sans Mono", monospace;
+
+  --measure: 68ch;
+  --step--1: 0.813rem;
+  --step-0:  1.0625rem;
+  --step-1:  1.25rem;
+  --step-2:  1.5rem;
+  --step-3:  2rem;
+  --step-4:  2.75rem;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:      #111126;
+    --surface:     #191932;
+    --surface-2:   #21213f;
+    --ink:         #dfdff0;
+    --ink-soft:    #bcbcd6;
+    --muted:       #8d8db4;
+    --rule:        #2c2c4c;
+    --rule-soft:   #24243f;
+    --accent:      #74cdf2;
+    --accent-soft: #1b2b40;
+    --pop:         #e488c9;
+    --bar:         #05050f;
+    --bar-ink:     #b9c2e0;
+    --shadow:      0 1px 0 #2c2c4c;
+  }
+}
+:root[data-theme="dark"] {
+  --ground:      #111126;
+  --surface:     #191932;
+  --surface-2:   #21213f;
+  --ink:         #dfdff0;
+  --ink-soft:    #bcbcd6;
+  --muted:       #8d8db4;
+  --rule:        #2c2c4c;
+  --rule-soft:   #24243f;
+  --accent:      #74cdf2;
+  --accent-soft: #1b2b40;
+  --pop:         #e488c9;
+  --bar:         #05050f;
+  --bar-ink:     #b9c2e0;
+  --shadow:      0 1px 0 #2c2c4c;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 2rem; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: var(--step-0);
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- window-chrome header, lifted from HypnOS's own page frame ---- */
+.chrome {
+  background: var(--bar);
+  color: var(--bar-ink);
+  font-family: var(--f-mono);
+  font-size: var(--step--1);
+  padding: 0.45rem 1rem;
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 1px solid var(--rule);
+}
+.chrome b { font-weight: 700; letter-spacing: 0.02em; }
+.chrome span { opacity: 0.62; }
+.chrome .dots { display: flex; gap: 4px; }
+.chrome .dots i {
+  width: 7px; height: 7px; display: block; background: currentColor; opacity: 0.45;
+}
+
+.wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 3rem;
+  max-width: 78rem;
+  margin: 0 auto;
+  padding: 3rem 1.5rem 6rem;
+}
+@media (min-width: 62rem) {
+  .wrap { grid-template-columns: 15rem minmax(0, 1fr); padding-inline: 2.5rem; }
+}
+
+/* ---- table of contents rail ---- */
+.toc { display: none; }
+@media (min-width: 62rem) {
+  .toc {
+    display: block;
+    position: sticky;
+    top: 4.5rem;
+    align-self: start;
+    font-family: var(--f-mono);
+    font-size: var(--step--1);
+    line-height: 1.5;
+  }
+}
+.toc p {
+  margin: 0 0 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4rem; }
+.toc a {
+  color: var(--ink-soft);
+  text-decoration: none;
+  display: grid;
+  grid-template-columns: 1.6rem 1fr;
+  padding: 0.1rem 0;
+  border-left: 2px solid transparent;
+  padding-left: 0.6rem;
+}
+.toc a b { color: var(--muted); font-weight: 400; }
+.toc a:hover, .toc a:focus-visible {
+  color: var(--accent);
+  border-left-color: var(--accent);
+}
+
+main { max-width: var(--measure); min-width: 0; }
+
+/* ---- type ---- */
+h1 {
+  font-family: var(--f-display);
+  font-weight: 700;
+  font-size: var(--step-4);
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.6rem;
+  text-wrap: balance;
+}
+.lede {
+  font-size: var(--step-1);
+  color: var(--ink-soft);
+  margin: 0 0 1rem;
+  text-wrap: pretty;
+}
+.byline {
+  font-family: var(--f-mono);
+  font-size: var(--step--1);
+  color: var(--muted);
+  margin: 0 0 3.5rem;
+  padding-bottom: 2rem;
+  border-bottom: 1px solid var(--rule);
+}
+.byline a { color: var(--accent); }
+
+section { margin-bottom: 3.5rem; scroll-margin-top: 4rem; }
+h2 {
+  font-family: var(--f-display);
+  font-weight: 700;
+  font-size: var(--step-3);
+  line-height: 1.12;
+  letter-spacing: -0.015em;
+  margin: 0 0 1.1rem;
+  text-wrap: balance;
+  display: grid;
+  grid-template-columns: 2.4rem 1fr;
+  align-items: baseline;
+}
+h2 b {
+  font-family: var(--f-mono);
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--pop);
+  letter-spacing: 0.06em;
+}
+h3 {
+  font-family: var(--f-display);
+  font-weight: 500;
+  font-size: var(--step-1);
+  margin: 2.2rem 0 0.7rem;
+  letter-spacing: -0.005em;
+}
+p { margin: 0 0 1.1rem; text-wrap: pretty; }
+strong { font-weight: 600; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, .toc a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 1px;
+}
+
+code, kbd {
+  font-family: var(--f-mono);
+  font-size: 0.86em;
+  background: var(--surface-2);
+  padding: 0.1em 0.34em;
+  color: var(--ink);
+  white-space: nowrap;
+}
+pre {
+  font-family: var(--f-mono);
+  font-size: var(--step--1);
+  line-height: 1.6;
+  background: var(--surface);
+  border-left: 2px solid var(--accent);
+  padding: 0.95rem 1.1rem;
+  margin: 0 0 1.4rem;
+  overflow-x: auto;
+}
+pre code { background: none; padding: 0; white-space: pre; font-size: 1em; }
+
+ul { margin: 0 0 1.1rem; padding-left: 1.2rem; }
+li { margin-bottom: 0.35rem; }
+li::marker { color: var(--muted); }
+
+/* ---- tables ---- */
+.scroll { overflow-x: auto; margin: 0 0 1.5rem; border-bottom: 1px solid var(--rule); }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-family: var(--f-mono);
+  font-size: var(--step--1);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+}
+th {
+  text-align: left;
+  font-weight: 700;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--muted);
+  padding: 0.5rem 0.9rem 0.5rem 0;
+  border-bottom: 1px solid var(--rule);
+  white-space: nowrap;
+}
+td {
+  padding: 0.5rem 0.9rem 0.5rem 0;
+  border-bottom: 1px solid var(--rule-soft);
+  vertical-align: top;
+}
+tbody tr:last-child td { border-bottom: 0; }
+td:first-child, th:first-child { padding-left: 0.6rem; }
+td.z { color: var(--pop); white-space: nowrap; font-weight: 700; }
+td.n { color: var(--accent); white-space: nowrap; }
+table.prose td:last-child { font-family: var(--f-body); font-size: 0.98rem; }
+tbody tr:hover td { background: var(--surface); }
+
+/* ---- callout ---- */
+.note {
+  background: var(--accent-soft);
+  border-left: 2px solid var(--accent);
+  padding: 0.95rem 1.1rem;
+  margin: 0 0 1.4rem;
+  font-size: 0.98rem;
+}
+.note p:last-child { margin-bottom: 0; }
+.note b {
+  font-family: var(--f-mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  display: block;
+  margin-bottom: 0.3rem;
+}
+
+/* ---- key/value strip for the stats ---- */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 1px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+  margin: 0 0 1.5rem;
+}
+.stats div { background: var(--ground); padding: 0.8rem 0.9rem; }
+.stats dt {
+  font-family: var(--f-mono);
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  margin-bottom: 0.25rem;
+}
+.stats dd {
+  margin: 0;
+  font-family: var(--f-display);
+  font-weight: 700;
+  font-size: var(--step-2);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- the 300px page diagram ---- */
+.page-diagram {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0 0.9rem;
+  align-items: stretch;
+  font-family: var(--f-mono);
+  font-size: var(--step--1);
+  margin: 0 0 1.5rem;
+}
+.page-diagram .ruler {
+  writing-mode: vertical-rl;
+  color: var(--muted);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-align: center;
+  border-right: 1px solid var(--rule);
+  padding-right: 0.55rem;
+}
+.page-diagram .stack { display: grid; gap: 1px; background: var(--rule); }
+.page-diagram .row {
+  background: var(--surface);
+  padding: 0.55rem 0.8rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  color: var(--ink-soft);
+}
+.page-diagram .row.hdr { background: var(--surface-2); color: var(--ink); font-weight: 700; }
+.page-diagram .row em { font-style: normal; color: var(--muted); }
+
+footer {
+  border-top: 1px solid var(--rule);
+  padding-top: 1.5rem;
+  color: var(--muted);
+  font-family: var(--f-mono);
+  font-size: var(--step--1);
+  max-width: var(--measure);
+}
+</style>
+
+<div class="chrome">
+  <b>HSP FORMAT SPEC</b>
+  <span>reverse-engineered from HypnOS 2.5</span>
+  <div class="dots" aria-hidden="true"><i></i><i></i><i></i></div>
+</div>
+
+<div class="wrap">
+  <nav class="toc" aria-label="Sections">
+    <p>Contents</p>
+    <ol>
+      <li><a href="#container"><b>1</b> Container</a></li>
+      <li><a href="#coords"><b>2</b> Coordinates</a></li>
+      <li><a href="#webpage"><b>3</b> Webpage row</a></li>
+      <li><a href="#elements"><b>4</b> Elements</a></li>
+      <li><a href="#escapes"><b>5</b> Text escapes</a></li>
+      <li><a href="#images"><b>6</b> Image lookup</a></li>
+      <li><a href="#links"><b>7</b> Links &amp; scripts</a></li>
+      <li><a href="#colours"><b>8</b> Colours</a></li>
+      <li><a href="#fonts"><b>9</b> Fonts</a></li>
+      <li><a href="#music"><b>10</b> Page music</a></li>
+      <li><a href="#gaps"><b>11</b> Known gaps</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <h1>The .hsp page format</h1>
+    <p class="lede">Every page in <em>Hypnospace Outlaw</em> is a 300-pixel-wide Construct&nbsp;2 array. Here is what each of its 21 slots means, traced to the game's own code.</p>
+    <p class="byline">Derived from the shipped GOG build (HypnOS 2.5) by decompiling <code>package.nw</code>. Nothing here is guessed from observation: each field below is cited to the function that reads it.</p>
+
+    <dl class="stats">
+      <div><dt>Pages</dt><dd>1,292</dd></div>
+      <div><dt>Gif elements</dt><dd>14,668</dd></div>
+      <div><dt>Text elements</dt><dd>11,979</dd></div>
+      <div><dt>Element types</dt><dd>3</dd></div>
+      <div><dt>Pages with music</dt><dd>977</dd></div>
+    </dl>
+
+    <p>The developers left a note in <code>data/read this.txt</code> saying they deliberately shipped everything unencrypted. They were not exaggerating &mdash; the game is a Construct&nbsp;2 HTML5 export inside an NW.js wrapper, and <code>data.js</code> contains the full project model. Reading it turns this from archaeology into transcription.</p>
+
+    <section id="container">
+      <h2><b>01</b> Container</h2>
+      <p>An <code>.hsp</code> file is a <strong>Construct 2 Array export</strong>: UTF-8 JSON, no BOM, one object.</p>
+      <pre><code>{"c2array": true, "size": [W, 21, 21], "data": [ ... ]}</code></pre>
+      <p><code>data</code> is indexed <code>data[x][y][z]</code>:</p>
+      <div class="scroll"><table class="prose">
+        <thead><tr><th>Axis</th><th>Range</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td class="z">x</td><td class="n">0 … W-1</td><td>Element index. <code>x = 0</code> is always the page itself.</td></tr>
+          <tr><td class="z">y</td><td class="n">0 … 20</td><td><code>y = 0</code> is the element header; <code>y &gt;= 1</code> are states.</td></tr>
+          <tr><td class="z">z</td><td class="n">0 … 20</td><td>Property slot.</td></tr>
+        </tbody>
+      </table></div>
+
+      <div class="page-diagram">
+        <div class="ruler">y axis</div>
+        <div class="stack">
+          <div class="row hdr"><span>y = 0 &nbsp; header</span><em>type &middot; id &middot; name</em></div>
+          <div class="row"><span>y = 1 &nbsp; DEFAULT</span><em>21 properties</em></div>
+          <div class="row"><span>y = 2 &nbsp; TRUETRANQUILITY</span><em>21 properties</em></div>
+          <div class="row"><span>y = 3 &nbsp; ABBYDETAINED</span><em>21 properties</em></div>
+          <div class="row"><span>… up to y = 20</span><em>unused slots are ""</em></div>
+        </div>
+      </div>
+
+      <p>Every shipped page uses a 21&times;21 cross-section, so there is room for one header row plus twenty states. Unused cells hold the empty string.</p>
+
+      <div class="note">
+        <b>Parsing trap</b>
+        <p>Values are stored as JSON strings almost everywhere, but a handful are JSON numbers. The runtime coerces everything through Construct 2's <code>int()</code>, which is <code>parseInt</code> &mdash; it takes the leading numeric prefix and discards the rest. Treat every cell as a string and parse it the same way, or a few real pages will decode wrongly.</p>
+      </div>
+
+      <h3>The header row</h3>
+      <div class="scroll"><table class="prose">
+        <thead><tr><th>z</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td class="z">0</td><td>Element type: <code>Webpage</code>, <code>Gif</code> or <code>Text</code>. Those three and blank are all that exist.</td></tr>
+          <tr><td class="z">1</td><td>Element id. The runtime overwrites this slot with a live object UID.</td></tr>
+          <tr><td class="z">2</td><td>Element name &mdash; the label shown in the Page Builder's element list.</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>State selection</h3>
+      <p>Row <code>y = 1</code> is always <code>DEFAULT</code>. Later rows are conditional variants named after story flags &mdash; <code>TRUETRANQUILITY</code>, <code>ABBYDETAINED</code>, <code>MINDCRASH</code>, <code>GOOPERREMOVED</code> &mdash; or authoring scratch slots <code>TEMP 01</code> through <code>TEMP 17</code>. Fifty-seven distinct names appear across the shipped pages.</p>
+      <p>The resolution rule, from <code>ElementEventWeb</code>: walk <code>y = 1, 2, 3 …</code> until the state name is empty, and take the <strong>last</strong> row whose trimmed, upper-cased name is a currently-true flag. <code>DEFAULT</code> is always true, so row 1 is the fallback. Each element resolves independently &mdash; one page can mix states.</p>
+    </section>
+
+    <section id="coords">
+      <h2><b>02</b> Coordinates</h2>
+      <p>A page is <strong>300 pixels wide</strong>, always. Its height is <code>max(int(z[3]), 1) &times; 32</code> pixels &mdash; the page-height field counts 32-pixel bands, not pixels.</p>
+      <p>The two element types anchor differently, which is easy to get backwards:</p>
+      <ul>
+        <li>A <code>Gif</code>'s <code>x</code>/<code>y</code> is the <strong>centre</strong> of the image.</li>
+        <li>A <code>Text</code> box's <code>x</code>/<code>y</code> is its <strong>top-left corner</strong>.</li>
+      </ul>
+      <p>Text is also positioned in percentages rather than pixels. The box is first centred in the page, then nudged:</p>
+      <pre><code>boxWidth = (z3 == 0) ? 300 : 300 * min(int(z3) * 0.01, 100)
+boxX     = int((300 - boxWidth) / 2) + int(z1) * 3      // 3 == 300 * 0.01
+boxY     = int(z2)</code></pre>
+    </section>
+
+    <section id="webpage">
+      <h2><b>03</b> The Webpage row</h2>
+      <p>Element <code>x = 0</code> carries the page's own metadata.</p>
+      <div class="scroll"><table class="prose">
+        <thead><tr><th>z</th><th>Field</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td class="z">1</td><td class="n">title</td><td>Shown in the browser title bar.</td></tr>
+          <tr><td class="z">2</td><td class="n">author</td><td>Citizen ID. <code>""</code> or <code>"0"</code> means no author; a leading <code>*</code> is stripped for display.</td></tr>
+          <tr><td class="z">3</td><td class="n">height</td><td>Page height in 32-pixel units.</td></tr>
+          <tr><td class="z">4</td><td class="n">music</td><td>Path to an <code>.ogg</code> or a <code>.hsm</code> tracker module &mdash; see section 10. <code>0</code>, <code>-1</code> or empty means silence.</td></tr>
+          <tr><td class="z">5</td><td class="n">background</td><td>A file in <code>images/bgs/</code>, tiled. The literal <code>000.png</code> means "flat colour".</td></tr>
+          <tr><td class="z">6</td><td class="n">cursor</td><td>Page cursor id; <code>0</code> is the default.</td></tr>
+          <tr><td class="z">7</td><td class="n">bgColour</td><td>Packed colour, <strong>only read when z[5] is <code>000.png</code></strong>.</td></tr>
+          <tr><td class="z">8</td><td class="n">tags</td><td>Search text. Everything after the first <code>&gt;</code> is the keyword list; the part before it is the human-readable blurb.</td></tr>
+          <tr><td class="z">9</td><td class="n">icon</td><td>Frame index into the <code>zoneselectorb</code> gif, used for this page in zone-hub listings.</td></tr>
+          <tr><td class="z">10</td><td class="n">isHomepage</td><td><code>1</code> marks a citizen's homepage, which changes how it is indexed for search.</td></tr>
+          <tr><td class="z">11</td><td class="n">onload</td><td>A script string. See section 7.</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="elements">
+      <h2><b>04</b> Gif and Text</h2>
+      <p>Four slots mean the same thing for both types.</p>
+      <div class="scroll"><table>
+        <thead><tr><th>z</th><th>Gif</th><th>Text</th></tr></thead>
+        <tbody>
+          <tr><td class="z">1</td><td>x of the image centre, px</td><td>x offset, % of page width</td></tr>
+          <tr><td class="z">2</td><td>y of the image centre, px</td><td>y of the box top, px</td></tr>
+          <tr><td class="z">5</td><td>image name</td><td>the text</td></tr>
+          <tr><td class="z">10</td><td colspan="2">link / action string; <code>-1</code> or empty means none</td></tr>
+          <tr><td class="z">11</td><td colspan="2">law category tag; <code>6</code> and <code>99</code> mark law-violating elements</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>Gif</h3>
+      <div class="scroll"><table class="prose">
+        <thead><tr><th>z</th><th>Field</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td class="z">3</td><td class="n">hsl</td><td>Only read when it contains a comma: <code>h,s,l</code> feeds an HSL-adjust shader. Anything else (<code>-1</code>, <code>60</code>) is ignored leftover data.</td></tr>
+          <tr><td class="z">6</td><td class="n">scale</td><td>Multiplier: <code>1</code>, <code>0.5</code>, <code>0.25</code> …</td></tr>
+          <tr><td class="z">7</td><td class="n">angle</td><td>Degrees.</td></tr>
+          <tr><td class="z">8</td><td class="n">mirror</td><td><code>1</code> mirrors horizontally.</td></tr>
+          <tr><td class="z">9</td><td class="n">flip</td><td><code>1</code> flips vertically.</td></tr>
+          <tr><td class="z">12</td><td class="n">swayX</td><td>Horizontal sway speed. <code>width = imgW * scale * sin(phase)</code>, stepped at 10&nbsp;fps.</td></tr>
+          <tr><td class="z">13</td><td class="n">swayY</td><td>Same, on height.</td></tr>
+          <tr><td class="z">14</td><td class="n">dither</td><td>Fade pulse, ping-ponging over a 0&ndash;200 phase.</td></tr>
+          <tr><td class="z">15</td><td class="n">rotMode</td><td><code>0</code> none, <code>1</code> wobble (<code>±20°</code> sine), <code>2</code> continuous spin.</td></tr>
+          <tr><td class="z">16</td><td class="n">rotSpeed</td><td>Rotation speed for the mode above.</td></tr>
+          <tr><td class="z">18</td><td class="n">frame</td><td>The still frame for static and button modes, or a start-frame offset while animating.</td></tr>
+          <tr><td class="z">19</td><td class="n">sync</td><td><code>1</code> restarts this animation in lockstep with every other synced gif.</td></tr>
+          <tr><td class="z">20</td><td class="n">animMode</td><td><code>0</code> loop, <code>-1</code> still, <code>-2</code> three-state button (<code>frame</code>, <code>+1</code> hover, <code>+2</code> held), <code>&gt;0</code> animate only on hover.</td></tr>
+        </tbody>
+      </table></div>
+
+      <div class="note">
+        <b>The off value is −1, not 0</b>
+        <p>The sway and dither speeds are gated on <code>&gt;= 0</code>. Zero genuinely does collapse the element to nothing &mdash; it is just that no shipped page uses zero. Treating <code>0</code> as "disabled" makes every affected gif render at sub-pixel size, which is exactly the bug this spec was written to stop you hitting.</p>
+      </div>
+
+      <p><code>z[4]</code> and <code>z[17]</code> are <strong>never read</strong> by the shipped runtime. They hold legacy data &mdash; case names and an old animation-speed field.</p>
+
+      <h3>Text</h3>
+      <div class="scroll"><table class="prose">
+        <thead><tr><th>z</th><th>Field</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td class="z">3</td><td class="n">width</td><td>Box width as a percentage of 300; <code>0</code> means 100%.</td></tr>
+          <tr><td class="z">6</td><td class="n">colour</td><td>Packed. See section 8.</td></tr>
+          <tr><td class="z">7</td><td class="n">font</td><td><code>HypnoFont</code>, <code>Bookstore</code>, <code>ClownHand</code> …</td></tr>
+          <tr><td class="z">8</td><td class="n">style</td><td>First char is the size class <code>0</code>/<code>1</code>/<code>2</code>, second is <code>n</code> or <code>b</code>. So <code>0n</code>, <code>1b</code>.</td></tr>
+          <tr><td class="z">9</td><td class="n">align</td><td><code>0</code> left, <code>1</code> centre, <code>2</code> right.</td></tr>
+          <tr><td class="z">12</td><td class="n">anim</td><td><code>0</code> none, <code>1</code> typewriter (types, pauses, deletes, repeats), <code>2</code> vertical sine bob, <code>3</code> right-to-left marquee.</td></tr>
+          <tr><td class="z">13</td><td class="n">animSpeed</td><td>Default <code>10</code>.</td></tr>
+          <tr><td class="z">14</td><td class="n">colour2</td><td><code>-1</code> for none. Otherwise the colour ping-pongs between z[6] and this.</td></tr>
+          <tr><td class="z">15</td><td class="n">colourSpeed</td><td>Default <code>10</code>.</td></tr>
+          <tr><td class="z">16</td><td class="n">noRecolour</td><td><code>1</code> draws the font sheet's own pixels. Also forced when the font is <code>DesignElements</code>.</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>Z-order</h3>
+      <p><code>UpdateZOrder</code> walks the array from the last element down to the first, pushing each one behind the window frame in turn. The net effect is that <strong>a higher element index sits further back</strong> &mdash; array order is painting order reversed.</p>
+    </section>
+
+    <section id="escapes">
+      <h2><b>05</b> Text escapes</h2>
+      <p>Implemented natively as <code>HypnoSpecial_ReplaceText</code>, applied in this order:</p>
+      <div class="scroll"><table class="prose">
+        <thead><tr><th>Input</th><th>Output</th></tr></thead>
+        <tbody>
+          <tr><td class="n">/n</td><td>Line break.</td></tr>
+          <tr><td class="n">//n</td><td>A literal <code>/n</code>. Likewise <code>//N</code>.</td></tr>
+          <tr><td class="n">/t</td><td>Tab &mdash; one glyph, seven space-widths wide.</td></tr>
+          <tr><td class="n">//t</td><td>A literal <code>/t</code>. Likewise <code>//T</code>.</td></tr>
+          <tr><td class="n">/p</td><td>The player's name, prefixed with a zero-width <code>§</code> marker.</td></tr>
+          <tr><td class="n">//p</td><td>A literal <code>/p</code>. Likewise <code>//P</code>.</td></tr>
+          <tr><td class="n">’</td><td>A plain apostrophe.</td></tr>
+          <tr><td class="n">#NAME#</td><td>The value of script variable <code>NAME</code>.</td></tr>
+          <tr><td class="n">#ConsoleA#</td><td>Gamepad button glyphs, through <code>#ConsoleY#</code>.</td></tr>
+        </tbody>
+      </table></div>
+      <p>The doubling trick is why the order matters: each <code>//x</code> form is swapped for a private-use character before the single form expands, then swapped back.</p>
+    </section>
+
+    <section id="images">
+      <h2><b>06</b> Image lookup</h2>
+      <p>A gif's <code>z[5]</code> is a <strong>name</strong>, not a path. At startup the game scans four directories under <code>data/images/</code> and matches case-insensitively against the first hit:</p>
+      <div class="scroll"><table class="prose">
+        <thead><tr><th>#</th><th>Directory</th><th>Shape</th></tr></thead>
+        <tbody>
+          <tr><td class="z">1</td><td class="n">gifs/&lt;name&gt;/</td><td>A directory of frames, used in listing order. A file called <code>NN.speed</code> sets the frame rate from its first two characters; the default is 5&nbsp;fps.</td></tr>
+          <tr><td class="z">2</td><td class="n">static/&lt;name&gt;.png</td><td>Single image, 0&nbsp;fps.</td></tr>
+          <tr><td class="z">3</td><td class="n">shapes/&lt;name&gt;.png</td><td>Single image, 0&nbsp;fps.</td></tr>
+          <tr><td class="z">4</td><td class="n">wordart/&lt;name&gt;/</td><td>Directories of per-letter glyph images.</td></tr>
+        </tbody>
+      </table></div>
+      <p>Files that do not end in <code>.gif</code>, <code>.jpg</code>, <code>.jpeg</code>, <code>.bmp</code> or <code>.png</code> are skipped. Page backgrounds are looked up separately, from <code>images/bgs/</code>, lower-cased, and they tile.</p>
+    </section>
+
+    <section id="links">
+      <h2><b>07</b> Links and scripts</h2>
+      <p>An element's <code>z[10]</code>, and the page's <code>z[11]</code>, hold a <code>|</code>-separated list of <code>command:parameter</code> pairs. A bare path with no colon is a page link.</p>
+      <div class="scroll"><table class="prose">
+        <thead><tr><th>Command</th><th>Effect</th></tr></thead>
+        <tbody>
+          <tr><td class="n">webpage</td><td>Navigate to another <code>.hsp</code>.</td></tr>
+          <tr><td class="n">func</td><td>Invoke a built-in UI function: <code>Inbox</code>, <code>Cases</code>, <code>Downloads</code> …</td></tr>
+          <tr><td class="n">anchor</td><td>Scroll the page to <code>n × 32</code> px.</td></tr>
+          <tr><td class="n">tooltip</td><td>Hover text.</td></tr>
+          <tr><td class="n">sfx</td><td>Play a sound.</td></tr>
+          <tr><td class="n">Event</td><td>Set a story flag &mdash; this is what switches elements to a non-<code>DEFAULT</code> state.</td></tr>
+          <tr><td class="n">virus</td><td>Infect the page.</td></tr>
+          <tr><td class="n">setloadspeed</td><td>Override the simulated load time.</td></tr>
+          <tr><td class="n">SearchGo</td><td>Run a search.</td></tr>
+          <tr><td class="n">password, wait, signal, buy, openfile, downloadfile, groupactive, hypii …</td><td>Game-logic commands, dispatched by the same interpreter.</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>How a link looks</h3>
+      <p>Every linked element gets a nine-patch box pinned to it &mdash; <code>t160</code> for a <code>Gif</code>, <code>t161</code> for a <code>Text</code>, both drawn from <code>pagelinkgif-sheet0.png</code>. For text it is created at <code>X-2, Y-2</code> sized <code>W+4, H+4</code>, so it sits 2px outside the element.</p>
+      <p>The box is marching ants. Its <code>Default</code> animation is <strong>4 frames at 8&nbsp;fps, looping</strong>, with 9-patch margins of 4 on every side, so the edge tile is 4px: two pixels of dash, two of gap, stepping one pixel per frame &mdash; a full cycle twice a second. The step is clockwise: the top edge moves right, the left edge moves up. Each dash is one pixel of <code>#9ac7f5</code> over a one-pixel <code>rgba(33,33,73,.63)</code> drop shadow, offset down and to the right. (The sheet also carries a 16-frame <code>Old</code> animation of 24&times;24 frames, which the object does not use.)</p>
+      <p>It is created with <code>SetVisible(0)</code> and stays hidden. The <code>Links</code> group reveals it only while the pointer is over it: the whole reveal sits under <code>Mouse.IsOverObject</code>, the matching <code>Else</code> hides every box, and a sweep hides any box whose UID is not the hovered <code>linkUID</code>. Exactly one box is ever on screen, and only while hovered &mdash; links are otherwise unmarked.</p>
+
+      <h3>Paths are capture-relative</h3>
+      <p>This is the subtlety that breaks naive converters. Links are authored against a logical root of <code>hs\</code>, but the directory actually served is the <strong>current capture</strong> &mdash; <code>hs</code>, <code>hsa</code>, <code>hsb</code> or <code>hsc</code>, one per chapter. <code>URLtoCurrent</code> rewrites the first path segment to whichever capture is live, unless that segment is <code>ex</code> or is itself a filename.</p>
+      <p>So the same link text resolves to a different file depending on which chapter you are in, and a link written <code>hsb\zone\p.hsp</code> read from an <code>hs</code> page loads <code>hs\zone\p.hsp</code>.</p>
+      <p>A path that names a directory resolves to <code>home.hsp</code>, falling back to <code>zone.hsp</code>.</p>
+      <div class="note">
+        <b>A bug that isn't</b>
+        <p>A handful of shipped links carry the "no link" sentinel glued to the front: <code>-1hs\02_the cafe\~thedumpsterhallo.hsp</code>. They look broken and they are not. The segment rewrite replaces <code>-1hs</code> wholesale, so they resolve correctly &mdash; reproduce the rule and you inherit the repair for free.</p>
+      </div>
+    </section>
+
+    <section id="colours">
+      <h2><b>08</b> Colours</h2>
+      <p>Colours are packed decimal integers in <strong>BGR</strong> order. The low byte is red, not blue.</p>
+      <pre><code>r =  c        &amp; 255
+g = (c &gt;&gt;  8) &amp; 255
+b = (c &gt;&gt; 16) &amp; 255</code></pre>
+      <p>Recolouring goes through Construct 2's <code>replacecolor</code> shader with a tolerance of <code>0.01</code> &mdash; an exact swap of one source colour, not a tint:</p>
+      <ul>
+        <li><strong>Text</strong> swaps pure black. The font sheets are black glyphs on transparency, so this is just filling the glyph mask with the target colour.</li>
+        <li><strong>Backgrounds</strong> swap <code>(17, 17, 38)</code>, which is the exact colour of <code>images/bgs/000.png</code>. A page whose background is <code>000.png</code> is therefore a flat fill of <code>z[7]</code>.</li>
+      </ul>
+    </section>
+
+    <section id="fonts">
+      <h2><b>09</b> Fonts</h2>
+      <p>The fonts are <strong>bitmap sprite sheets</strong>, not vector faces. Each lives at <code>images/fonts/&lt;name&gt;&lt;size&gt;&lt;style&gt;.png</code>, all lower-case &mdash; <code>hypnofont0n.png</code>, <code>clownhand1b.png</code>.</p>
+      <p>Every sheet is a grid <strong>eight columns wide</strong>, filled row-major with this character set:</p>
+      <pre><code>ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz
+0123456789.,;:?!-_~#"'&amp;()[]|`\/@°+=*$£€&lt;&gt;</code></pre>
+      <p>Size class <code>0</code> appends three more: <code>% ■ ▲</code>.</p>
+      <div class="scroll"><table>
+        <thead><tr><th>Size class</th><th>Cell</th><th>Sheet</th></tr></thead>
+        <tbody>
+          <tr><td class="z">0</td><td class="n">7 × 7</td><td>56 × 84</td></tr>
+          <tr><td class="z">1</td><td class="n">14 × 12</td><td>112 × 144</td></tr>
+          <tr><td class="z">2</td><td class="n">21 × 21</td><td>168 × 252</td></tr>
+        </tbody>
+      </table></div>
+      <p>Per-font metrics live in <code>images/fonts/fontdata.ini</code>, keyed by <code>&lt;Font&gt;&lt;size&gt;&lt;style&gt;</code>:</p>
+      <pre><code>[HypnoFont0n]
+spacing=0
+lineheight=1
+charwidths=.,li^2^|;:!'` [(^3^)]&lt;&gt;ITZjcnrtxt1^4^...</code></pre>
+      <p><code>charwidths</code> is a <code>^</code>-separated alternating list of character set and pixel width. Characters not listed keep the cell width. <code>spacing</code> goes between characters and <code>lineheight</code> between lines &mdash; and <code>lineheight</code> is often negative.</p>
+      <p>Layout is Construct 2's Spritefont algorithm: word-wrap at the box width breaking on space, tab and hyphen, then <code>measureWidth = Σ(charWidth + spacing) − spacing</code>, then align inside the box using <code>z[9]</code>.</p>
+    </section>
+
+    <section id="music">
+      <h2><b>10</b> Page music</h2>
+      <p><code>Webpage z[4]</code> names either a plain <code>.ogg</code> or a <code>.hsm</code> module, and the runtime branches on the extension. An <code>.ogg</code> goes straight to the audio plugin, with its <code>title|artist</code> read from a sibling <code>.txt</code>. Anything else is <code>JSONLoad</code>ed as an array and sequenced.</p>
+      <div class="scroll"><table>
+        <thead><tr><th>Kind</th><th>Pages</th><th>Distinct files</th></tr></thead>
+        <tbody>
+          <tr><td class="n">.hsm</td><td class="z">527</td><td>68 modules</td></tr>
+          <tr><td class="n">.ogg</td><td class="z">450</td><td>79 files</td></tr>
+          <tr><td class="n">silent</td><td class="z">315</td><td>&mdash;</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>A tracker module, also a c2array</h3>
+      <p><code>.hsm</code> overloads its axes exactly the way <code>.hsp</code> does:</p>
+      <div class="scroll"><table class="prose">
+        <thead><tr><th>Axis</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td class="z">x</td><td>Step within the pattern, <strong>1-based</strong> (<code>PlayStep = CurrentStep + 1</code>).</td></tr>
+          <tr><td class="z">y</td><td><code>5 &times; pattern + track</code>, tracks numbered <strong>1..5</strong>.</td></tr>
+          <tr><td class="z">z</td><td>Per-step parameter.</td></tr>
+        </tbody>
+      </table></div>
+      <p>Row <code>y = 0</code> and column <code>x = 0</code> then do something else entirely:</p>
+      <ul>
+        <li><code>x=0, y=0</code> &mdash; <strong>title and artist</strong>.</li>
+        <li><code>y=0</code>, any <code>x</code> &mdash; the <strong>instrument table</strong>. Slot <code>x</code> holds a sample path, then loop period, stop, sustain and attack.</li>
+        <li><code>y=0, z=10</code> &mdash; doubling as the <strong>pattern sequence</strong>. Position <code>x</code> holds that slot's pattern index <em>plus one</em>; <code>0</code> is an empty slot.</li>
+        <li><code>x=0, y=5p+1</code> &mdash; pattern <code>p</code>'s header: BPM, steps per pattern, beat division. It shares the row with track 1's pan and volume.</li>
+      </ul>
+
+      <h3>Steps</h3>
+      <p>A step is a sixteenth note: <code>secPerStep = 1 / (BPM / 60) / 4</code>.</p>
+      <div class="scroll"><table class="prose">
+        <thead><tr><th>z</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td class="z">0</td><td>Instrument slot. <strong><code>0</code> means no note</strong> &mdash; this is the gate the runtime tests.</td></tr>
+          <tr><td class="z">1</td><td>Note. <code>100</code> is a rest.</td></tr>
+          <tr><td class="z">2</td><td>Pan, 0&ndash;100.</td></tr>
+          <tr><td class="z">3</td><td>Volume, 0&ndash;100.</td></tr>
+          <tr><td class="z">4&ndash;16</td><td>Per-step effects &mdash; echo, arpeggio, pitch shift, vibrato, filter. Each stored 0&ndash;100 and <code>lerp</code>ed into its own range.</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>Pitch is resampling, not MIDI</h3>
+      <p>A 60-entry frequency table (<code>FREQOUT</code>, <code>11025 … 332995</code>) is indexed by <code>note % 100</code>, and the playback rate is that value over 44100. Index 24 is exactly 44100, so note 24 plays the sample at its own pitch &mdash; and it is by far the most common note in the shipped modules.</p>
+
+      <h3>Gain</h3>
+      <p>Track and step gain run through two different log divisors, which as amplitudes are two different curves:</p>
+      <pre><code>trackAmp = (masterVol/100 &times; trackVol/100) ^ 1.25   // log10(x)/0.04
+stepAmp  = (stepVol/100) ^ 2.5                     // log10(x)/0.02</code></pre>
+      <p>Pan is summed rather than averaged: track and step each map 0&ndash;100 onto &minus;1…+1, and the two are added, so 50/50 is centre.</p>
+
+      <div class="note">
+        <b>An envelope bug worth keeping</b>
+        <p>The instrument envelope converts each duration with <code>ceil(lerp(0, 34, v/100))</code>, after which <code>1</code> and <code>2</code> become 0.25 and 0.5 steps. The <em>sustain</em> branch then writes its result into the <em>stop</em> slot instead of its own. It is a real bug in the shipped game, and it rarely bites &mdash; 934 of 1003 instruments leave sustain at zero &mdash; but a renderer that quietly fixes it stops matching what players actually heard.</p>
+      </div>
+    </section>
+
+    <section id="gaps">
+      <h2><b>11</b> Known gaps</h2>
+      <ul>
+        <li><strong>Word art.</strong> Stored as ordinary <code>Gif</code> elements pointing at a word-art directory. The per-letter composition happens in the Page Builder, not at page load, so a renderer sees only the finished directory.</li>
+        <li><strong>Shaders.</strong> <code>alphadither</code> and <code>AdjustHSL</code> are pixel effects. A CSS renderer can approximate them with <code>opacity</code> and <code>filter</code>, but not match them exactly &mdash; the dither is a real ordered 4×4 pattern. Note that its parameter runs opposite to the name: <code>0</code> is fully transparent, <code>1</code> opaque.</li>
+        <li><strong>State selection.</strong> Resolving anything other than <code>DEFAULT</code> needs live game save state.</li>
+        <li><strong>Tracker effects.</strong> The <code>.hsm</code> per-step slots <code>z[4]</code>&ndash;<code>z[16]</code> are parsed but not rendered; they drive echo, arpeggio, pitch-shift, vibrato and filter timers.</li>
+      </ul>
+    </section>
+
+    <footer>
+      Verified against all 1,292 shipped pages: 14,668 image references and 11,979 font references resolve, 975 of the 977 pages with music get a playable file, and 48 dead links point at 13 pages that are absent from the game data entirely.
+    </footer>
+  </main>
+</div>

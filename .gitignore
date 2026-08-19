@@ -1,0 +1,19 @@
+# Nothing derived from the game belongs in version control.
+
+# The export produced by build.sh (contains, or links to, game assets).
+/site/
+/site-*/
+
+# A local copy of the game install.
+/hypnospaceFiles/
+/game/
+
+# Intermediate extractions: the unpacked NW.js bundle and the two
+# Construct 2 packages, per RIPLOG.md.
+/work/
+
+# Python
+__pycache__/
+*.py[cod]
+/.venv/
+/venv/
