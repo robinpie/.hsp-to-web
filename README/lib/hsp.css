@@ -1,0 +1,145 @@
+/* SPDX-License-Identifier: CC0-1.0 */
+/* Exported Hypnospace pages.
+ *
+ * A page is 300 device pixels wide and its own art fills every one of them, so
+ * there is deliberately no frame, bar or caption here -- just the page, scaled
+ * up by a whole number the way the game scales its 480x270 screen. */
+:root {
+  --ground: #0b0b10;
+  --ink: #e6e6ea;
+  --dim: #8a8aa0;
+  --panel: #1e1e2a;
+  --accent: #6ee7ff;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font: 13px/1.5 ui-monospace, "DejaVu Sans Mono", Menlo, Consolas, monospace;
+}
+img, canvas { image-rendering: pixelated; }
+
+/* The stage centres the page and carries the integer zoom. `zoom` rather than a
+   transform so the document's own scrollbar tracks the scaled height. */
+#hsp-stage {
+  zoom: var(--hsp-scale, 1);
+  width: 300px;
+  margin: 0 auto;
+}
+#hsp-page {
+  position: relative;
+  width: 300px;
+  overflow: hidden;
+  background-repeat: repeat;
+  image-rendering: pixelated;
+  /* Elements carry z-index up to 9999 to reproduce the game's paint order;
+     isolate them so they cannot climb over anything overlaid on the page. */
+  isolation: isolate;
+}
+
+.hsp-el { position: absolute; }
+.hsp-text { line-height: 0; }
+.hsp-gif { transform-origin: 50% 50%; }
+.hsp-gif img { display: block; }
+
+/* Hovering a link draws a marching-ants box around it, and only around the one
+   under the pointer. In game that box is a nine-patch (`pagelinkgif-sheet0.png`)
+   created per linked element, kept hidden until `Mouse.IsOverObject` holds.
+
+   Reproduced from the sprite: a 1px light-blue dash with a 1px dark drop shadow
+   offset down-right, 2px on / 2px off, sitting 2px outside the element. Its four
+   frames each shift the dashes one pixel clockwise at 8fps, so the 4px pattern
+   cycles twice a second. */
+.hsp-link { cursor: pointer; }
+
+.hsp-link:hover::before,
+.hsp-link:hover::after,
+.hsp-link:focus-visible::before,
+.hsp-link:focus-visible::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  /* top edge, right edge, bottom edge, left edge */
+  background-size: 4px 1px, 1px 4px, 4px 1px, 1px 4px;
+  background-position: 0 0, 100% 0, 0 100%, 0 0;
+  background-repeat: repeat-x, repeat-y, repeat-x, repeat-y;
+  animation: hsp-march 0.5s steps(4) infinite;
+}
+
+/* The drop shadow sits one pixel down and right of the line itself. */
+.hsp-link:hover::before,
+.hsp-link:focus-visible::before {
+  inset: -1px -3px -3px -1px;
+  background-image:
+    linear-gradient(90deg,  rgba(33,33,73,.63) 0 2px, transparent 2px),
+    linear-gradient(180deg, rgba(33,33,73,.63) 0 2px, transparent 2px),
+    linear-gradient(90deg,  rgba(33,33,73,.63) 0 2px, transparent 2px),
+    linear-gradient(180deg, rgba(33,33,73,.63) 0 2px, transparent 2px);
+}
+.hsp-link:hover::after,
+.hsp-link:focus-visible::after {
+  inset: -2px;
+  background-image:
+    linear-gradient(90deg,  #9ac7f5 0 2px, transparent 2px),
+    linear-gradient(180deg, #9ac7f5 0 2px, transparent 2px),
+    linear-gradient(90deg,  #9ac7f5 0 2px, transparent 2px),
+    linear-gradient(180deg, #9ac7f5 0 2px, transparent 2px);
+}
+
+/* Clockwise: top slides right, right slides down, bottom left, left up. */
+@keyframes hsp-march {
+  to { background-position: 4px 0, 100% 4px, -4px 100%, 0 -4px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hsp-link:hover::before, .hsp-link:hover::after,
+  .hsp-link:focus-visible::before, .hsp-link:focus-visible::after {
+    animation: none;
+  }
+}
+
+/* Keyboard help, hidden until asked for with "?". */
+#hsp-help {
+  position: fixed;
+  inset: auto 12px 12px auto;
+  z-index: 2147483000;
+  background: var(--panel);
+  border: 1px solid #333349;
+  padding: 10px 12px;
+  font-size: 11px;
+  line-height: 1.8;
+  color: var(--dim);
+  max-width: 20rem;
+}
+#hsp-help[hidden] { display: none; }
+#hsp-help b { color: var(--ink); font-weight: 400; }
+#hsp-help kbd {
+  display: inline-block;
+  min-width: 1.4em;
+  text-align: center;
+  background: #2b2b3d;
+  border: 1px solid #444461;
+  padding: 0 4px;
+  color: var(--accent);
+}
+#hsp-help a { color: var(--accent); }
+
+/* ------------------------------------------------------------- index page */
+body.hsp-index { padding: 24px; max-width: 900px; margin: 0 auto; background: #14141c; }
+.hsp-index h1 { font-size: 18px; margin: 0 0 4px; }
+.hsp-index .sub { color: var(--dim); margin: 0 0 16px; }
+.hsp-index input {
+  background: var(--panel); border: 1px solid #333349; color: var(--ink);
+  padding: 4px 8px; font: inherit; width: 260px; margin-left: 8px;
+}
+.hsp-index ul { list-style: none; margin: 0; padding: 0; }
+.hsp-index li {
+  display: grid; grid-template-columns: 1fr auto auto; gap: 12px;
+  padding: 3px 6px; border-bottom: 1px solid #23233240;
+}
+.hsp-index li:hover { background: var(--panel); }
+.hsp-index a { color: var(--accent); text-decoration: none; }
+.hsp-index a:hover { text-decoration: underline; }
+.hsp-index .p { color: var(--dim); font-size: 11px; }
+.hsp-index .au { color: #b48ead; font-size: 11px; }

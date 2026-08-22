@@ -179,7 +179,6 @@ def main():
 
     with open(os.path.join(out, 'index.json'), 'w', encoding='utf-8') as fh:
         json.dump(index, fh, ensure_ascii=False)
-    hc.write_index(out, index)
 
     libsrc = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'web')
     libdst = os.path.join(out, 'lib')
