@@ -299,6 +299,7 @@ opened later on a differently-sized window still fits itself by default.
 | `tools/hspconv.py` | `.hsp` → static HTML site |
 | `tools/hsmrender.py` | `.hsm` tracker modules → looping audio files |
 | `tools/hspaudit.py` | checks a converted site for unresolved assets, music and dead links |
+| `tools/hsppack.py` | packs a custom `.hsp` into a standalone page with only the assets it uses |
 | `web/hsp.js` | browser runtime: spritefont layout, gif player, animations |
 | `web/hsp.css` | page styling: integer zoom, pixel scaling, link marching-ants |
 | `hypnospaceFiles/` | the copied game install (never in version control) |

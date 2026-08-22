@@ -106,12 +106,45 @@ Spritefont word-wrap and glyph blitting onto a canvas, the frame-sequence gif pl
 and the sway / spin / marquee / typewriter / colour-cycle animations — so pages animate
 and link to each other as they do in game.
 
+## Your own pages
+
+A `.hsp` is a plain JSON array, so you can write a page by hand — see
+[FORMAT.md](FORMAT.md) for what each column means — and turn it into a working page with
+`hsppack.py`:
+
+```bash
+python3 tools/hsppack.py --data "$GAME" mypage.hsp --out mypage
+```
+
+Where `hspconv.py` converts the whole game, this pulls in **only** what your page names:
+the gif frames, bitmap font sheets, background and music it actually references, copied
+in next to the HTML. The result is self-contained and usually tens of KiB rather than the
+game's several hundred MB. Pass a directory instead of a file to pack several pages at
+once — links between them resolve, and links to anything outside the set are reported
+rather than silently dropped.
+
+It also names everything that failed to resolve, which is most of what goes wrong when
+writing a page by hand:
+
+```
+packed 2 page(s), 7 assets (57 KiB total)
+  !! no image named "totally-not-a-real-gif" in the game data
+  -- link to "hs\somewhere\else.hsp" is not one of the packed pages
+```
+
+If a page's music is a `.hsm`, that one module is rendered on the spot, so ffmpeg and
+numpy are needed for it; `--no-music` skips audio entirely and needs neither.
+
+Because it copies assets in rather than symlinking, the output **does** contain the
+game's art — same rule as `--copy-assets`: fine for yourself, not for redistribution.
+
 ## Tools
 
 | | |
 |---|---|
 | `build.sh` | one-shot rebuild from your game copy |
 | `tools/hspconv.py` | `.hsp` → static site |
+| `tools/hsppack.py` | one custom `.hsp` → a standalone page with only the assets it uses |
 | `tools/hsmrender.py` | render `.hsm` tracker modules to looping audio |
 | `tools/hspaudit.py` | verify a converted site (unresolved assets, music, dead links) |
 | `tools/c2decomp.py` | general-purpose Construct 2 `data.js` decompiler, used to read the game's logic |

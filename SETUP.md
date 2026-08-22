@@ -8,7 +8,7 @@ your machine, and the game's files are only ever read.
 
 | | | |
 |---|---|---|
-| Python | 3.8+ | `hspconv.py` and `hspaudit.py` need nothing but the standard library |
+| Python | 3.8+ | `hspconv.py`, `hsppack.py` and `hspaudit.py` need nothing but the standard library |
 | numpy | any recent | only for `hsmrender.py` (tracker music) |
 | ffmpeg | any recent | only for `hsmrender.py`, to decode samples and encode the result |
 
@@ -119,6 +119,10 @@ follows you from page to page for the rest of the session.
 **Some pages are silent** — either they have no music (315 of them), or the `.hsm`
 render was skipped. Check that `site/media/hsm/index.json` exists and re-run
 `hsmrender.py` if not.
+
+**`no image named "..."` when packing your own page** — the name in the `.hsp` must
+match a file or folder under `data/images/{gifs,static,shapes,wordart}`, without its
+extension and case-insensitively. `hsppack.py` prints every name it could not find.
 
 **`ffmpeg: command not found` during the music render** — install ffmpeg (see above), or
 pass `--no-music`.
