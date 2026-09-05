@@ -376,9 +376,12 @@ class GifEl {
     this.node.style.left = def.x + 'px';
     this.node.style.top = def.y + 'px';
     if (def.hsl) {
+      // The shader's three parameters are C2 percentages: each is the stored
+      // number over 100. `huerotate` is then added to the HSL hue, which runs
+      // 0..1 over the whole wheel -- so 100 is a full turn, not 100 degrees.
       const [hue, sat, lum] = def.hsl;
       this.img.style.filter =
-        `hue-rotate(${hue}deg) saturate(${sat}%) brightness(${lum}%)`;
+        `hue-rotate(${hue * 3.6}deg) saturate(${sat}%) brightness(${lum}%)`;
     }
     this.render();
   }

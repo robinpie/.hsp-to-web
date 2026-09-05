@@ -63,7 +63,7 @@ The page is `PAGEWIDTH = 300` px wide. Page height is `max(int(Webpage z[3]), 1)
 | 10 | link / action string (§7); `-1` or `""` = none | same |
 | 11 | law category tag (`6`/`99` mark law-violating elements) | same |
 
-`Gif z[3]` is read only when it contains a comma. `h,s,l` then feeds the `AdjustHSL` shader (hue rotate, saturation %, lightness %, e.g. `0,500,100`). Any other value (`-1`, `60`, …) is a leftover and disables the effect.
+`Gif z[3]` is read only when it contains a comma. `h,s,l` then feeds the `AdjustHSL` shader (hue rotate, saturation, lightness -- all three are C2 percentage parameters, i.e. the number over 100, e.g. `0,500,100`; the hue is added to the HSL hue, which spans the whole wheel over 0..1, so `25` is a quarter turn / 90 degrees). Any other value (`-1`, `60`, …) is a leftover and disables the effect.
 
 `Gif` z[4] and z[17] are never read by the shipped runtime. They hold legacy data: case names and an old animation-speed field.
 
