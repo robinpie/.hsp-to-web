@@ -450,6 +450,25 @@ DECORATION = re.compile(
     r'|^bg[-_0-9]|[-_]bg$', re.I)
 
 
+def still_frame(e):
+    """The frame an image element is showing while nothing is moving.
+
+    Mirrors `GifEl.startFrame()` in `web/hsp.js`: an element parked on one
+    frame (`animMode` -1/-2) or animated only on hover or click (`animMode`
+    > 0) sits on its stored frame, and a free-running loop starts there. A
+    sprite sheet like `000clubbutts` holds 57 different club badges in one
+    gif, so frame 0 is not a stand-in for any of the others.
+    """
+    frames = e.get('frames') or []
+    if not frames:
+        return None
+    mode = e.get('animMode') or 0
+    f = e.get('frame') or 0
+    if mode in (-1, -2) or mode > 0:
+        return frames[max(0, min(len(frames) - 1, f))]
+    return frames[max(0, f) % len(frames)]
+
+
 def gif_alt(e):
     """Alt text for an image element.
 
@@ -695,7 +714,7 @@ def reader_html(page, root):
                 continue          # furniture: it means nothing without the layout
             if e.get('frames'):
                 img = '<img src="%s%s" alt="%s" loading="lazy">' % (
-                    attr(root + 'assets/'), attr(e['frames'][0]), attr(alt))
+                    attr(root + 'assets/'), attr(still_frame(e)), attr(alt))
             elif href or alt:
                 img = html_escape(alt or humanise(e.get('gif')))
             else:
