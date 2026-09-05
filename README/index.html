@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hypnospace pages</title>
+<link rel="stylesheet" href="lib/hsp.css">
+<body class="hsp-index">
+<div class="hsp-win">
+<h1 class="hsp-win-bar">Hypnospace Outlaw &mdash; 1 pages</h1>
+<main class="hsp-win-body">
+<p class="sub">Rendered from <code>.hsp</code> sources.
+<label for="q">Filter</label> <input id="q" type="search" autocomplete="off"></p>
+<p class="sub" id="count" role="status">1 pages</p>
+<ul id="list"><li data-k="readme.hsp hypnospace page robinpie "><a href="pages/README.html">Hypnospace Page</a><span class="p">README.hsp</span><span class="au">robinpie</span></li></ul>
+</main>
+</div>
+<script>
+const q=document.getElementById('q'),c=document.getElementById('count'),
+      items=[...document.querySelectorAll('#list li')];
+let t=0;
+q.addEventListener('input',()=>{const v=q.value.toLowerCase();let n=0;
+  for(const li of items){const hit=!v||li.dataset.k.includes(v);li.hidden=!hit;n+=hit;}
+  clearTimeout(t);t=setTimeout(()=>{c.textContent=n+(n===1?' page':' pages');},250);});
+</script>

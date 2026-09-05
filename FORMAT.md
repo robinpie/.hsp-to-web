@@ -156,6 +156,12 @@ Page backgrounds come from `images/bgs/<Webpage z[5]>` (lower-cased) and tile.
 
 Command names are matched case-insensitively.
 
+### External URLs (an extension, not the game's)
+
+HypnOS only ever navigates to another `.hsp`, so nothing in the shipped data links off Hypnospace and the format has no way to say so. `hspconv.py` accepts one anyway, for pages written to be read on the web: a link value beginning `http://`, `https://` or `mailto:` — bare, or as `webpage:https://…` — is passed to the browser as it stands. It becomes an ordinary `<a>` that opens in a new tab, with `rel="noopener noreferrer"` and a visually hidden "(opens in a new tab)" so it is announced.
+
+In game such a link does nothing. A page that uses one still loads and still converts; it just is not a link the original runtime can follow.
+
 ### Link rendering
 
 Every linked element gets a nine-patch box pinned to it: `t160` for a `Gif`, `t161` for a `Text`, both drawn from `pagelinkgif-sheet0.png`. For text it is created at `X-2, Y-2` sized `W+4, H+4`, sitting 2px outside the element.

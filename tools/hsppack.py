@@ -75,6 +75,9 @@ def main():
                     help='skip audio entirely (no ffmpeg/numpy needed)')
     ap.add_argument('--format', default='ogg', choices=['ogg', 'opus', 'm4a'],
                     help='encoding for rendered .hsm music (default ogg)')
+    ap.add_argument('--base-url', default='',
+                    help='where the page will be served, e.g. '
+                         'https://example.com/mypage -- enables og:url and og:image')
     args = ap.parse_args()
 
     data = os.path.abspath(args.data)
@@ -117,27 +120,21 @@ def main():
 
     # Second pass: re-resolve music now that the manifest exists, then collect
     # every asset the pages actually name.
-    used, missing_assets = set(), []
-    index = []
-    page_index = {p['path'].lower(): p['path'] for p in parsed}
-    dead = []
+    used, used_fonts, missing_assets = set(), {}, []
     for page in parsed:
-        rel = page['path']
         mus = page['music'] = None if args.no_music else page['music']
         if mus and mus['kind'] == 'hsm' and mus.get('missing') and mus['source'] in hsm:
             entry = hsm[mus['source']]
             mus.update(src='media/hsm/' + entry['file'], title=entry['title'],
                        artist=entry['artist'], seconds=entry['seconds'])
             del mus['missing']
-        page['fonts'] = {}
+        for key in hc.attach_fonts(page, fonts):
+            missing_assets.append(f'font {key}')
+        for key, f in page['fonts'].items():
+            used_fonts[key] = f
+            used.add(f['sheet'])
         for e in page['elements']:
-            if e['type'] == 'text':
-                if e['font'] in fonts:
-                    page['fonts'][e['font']] = fonts[e['font']]
-                else:
-                    missing_assets.append(f"font {e['fontName']} ({e['font']})")
             used.update(e.get('frames', []))
-        used.update(f['sheet'] for f in page['fonts'].values())
         if page['bg']:
             used.add(page['bg'])
         if mus and mus['kind'] == 'ogg' and mus['src']:
@@ -145,24 +142,14 @@ def main():
         if mus and mus.get('missing'):
             missing_assets.append(f"music {mus['source']}")
 
-        for link in [e['link'] for e in page['elements']] + [page['script']]:
-            if not link or not link.get('href'):
-                continue
-            hit = hc.resolve_link(link['href'], rel, page_index)
-            link['page'] = os.path.splitext(hit)[0] + '.html' if hit else None
-            if hit is None:
-                dead.append(link['href'])
+    page_index = {p['path'].lower(): p['path'] for p in parsed}
+    dead = hc.resolve_page_links(parsed, page_index)
 
-        dst = os.path.join(out, 'pages', os.path.splitext(rel)[0] + '.html')
-        os.makedirs(os.path.dirname(dst), exist_ok=True)
-        root = hc.rel_root(len(os.path.relpath(dst, out).split(os.sep)) - 1)
-        with open(dst, 'w', encoding='utf-8') as fh:
-            fh.write(hc.HTML.format(
-                title=hc.html_escape(page['title'] or os.path.basename(rel)),
-                data=json.dumps(page, ensure_ascii=False).replace('</', '<\\/'),
-                root=root, root_js=json.dumps(root)))
-        index.append({'path': rel,
-                      'html': 'pages/' + os.path.splitext(rel)[0] + '.html',
+    index = []
+    for page in parsed:
+        hc.write_page(out, page, page['path'], args.base_url)
+        index.append({'path': page['path'],
+                      'html': 'pages/' + os.path.splitext(page['path'])[0] + '.html',
                       'title': page['title'], 'author': page['author'],
                       'blurb': page['blurb'], 'n': len(page['elements'])})
 
@@ -180,11 +167,9 @@ def main():
     with open(os.path.join(out, 'index.json'), 'w', encoding='utf-8') as fh:
         json.dump(index, fh, ensure_ascii=False)
 
-    libsrc = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'web')
-    libdst = os.path.join(out, 'lib')
-    os.makedirs(libdst, exist_ok=True)
-    for f in os.listdir(libsrc):
-        shutil.copy2(os.path.join(libsrc, f), os.path.join(libdst, f))
+    hc.write_index(out, index)
+    hc.copy_lib(out)
+    hc.font_css(out, used_fonts.values(), data)
 
     size = sum(os.path.getsize(os.path.join(dp, f))
                for dp, _, fs in os.walk(out) for f in fs)

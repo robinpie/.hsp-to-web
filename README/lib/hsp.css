@@ -2,25 +2,53 @@
 /* Exported Hypnospace pages.
  *
  * A page is 300 device pixels wide and its own art fills every one of them, so
- * there is deliberately no frame, bar or caption here -- just the page, scaled
- * up by a whole number the way the game scales its 480x270 screen. */
+ * there is deliberately no frame, bar or caption around the artwork itself --
+ * just the page, scaled up by a whole number the way the game scales its
+ * 480x270 screen. The controls sit above it, outside the stage, because a
+ * page that starts music and animation on its own needs somewhere to stop it
+ * that is not a secret keystroke. */
+/* HypnOS's own palette, read off the window sprites in the Construct 2
+   package -- windowpanenu, windowinnernu, windowtab: a deep indigo pane
+   inside a pale blue frame, periwinkle bevels, and an orange rule under the
+   active tab. Reproduced in CSS, like the marching ants below; no sprite from
+   the game is copied here.
+
+   Text pairs are all at or above 4.5:1 against the surface they sit on.
+   Orchid (3.4:1 on indigo) is decorative only -- fills and rules, never type. */
 :root {
-  --ground: #0b0b10;
-  --ink: #e6e6ea;
-  --dim: #8a8aa0;
-  --panel: #1e1e2a;
-  --accent: #6ee7ff;
+  --deep:   #13061f;   /* outline, and the void around the page */
+  --ground: #302454;   /* window fill */
+  --panel:  #3b2d68;   /* raised control */
+  --raised: #4a3a7d;   /* its lit edge */
+  --rail:   #9ac7f5;   /* pale blue frame */
+  --peri:   #8990f5;   /* periwinkle bevel */
+  --orchid: #bf4ad4;   /* active tab */
+  --orange: #eb7044;   /* the rule under it */
+  --paper:  #ebe4dd;   /* inset fields */
+  --ink:    var(--paper);
+  --dim:    var(--peri);
+  --line:   var(--peri);
+  --accent: var(--rail);
 }
 * { box-sizing: border-box; }
 html, body {
   margin: 0;
   padding: 0;
-  background: var(--ground);
+  /* The void around a page stays near-black so the artwork keeps the eye;
+     the indigo is for the chrome. */
+  background: var(--deep);
   color: var(--ink);
   font: 13px/1.5 ui-monospace, "DejaVu Sans Mono", Menlo, Consolas, monospace;
 }
+html { scroll-behavior: smooth; }
 img, canvas { image-rendering: pixelated; }
 
+:where(a, button, input, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------- page stage */
 /* The stage centres the page and carries the integer zoom. `zoom` rather than a
    transform so the document's own scrollbar tracks the scaled height. */
 #hsp-stage {
@@ -28,6 +56,7 @@ img, canvas { image-rendering: pixelated; }
   width: 300px;
   margin: 0 auto;
 }
+#hsp-main { overflow-x: auto; }
 #hsp-page {
   position: relative;
   width: 300px;
@@ -39,11 +68,96 @@ img, canvas { image-rendering: pixelated; }
   isolation: isolate;
 }
 
-.hsp-el { position: absolute; }
-.hsp-text { line-height: 0; }
+/* Without scripting the stage stays empty, so the converter's plain-HTML
+   version of the page is what shows. With scripting it is the other way round
+   until the reader asks for the text. */
+#hsp-stage { display: none; }
+.hsp-js #hsp-stage { display: block; }
+.hsp-js #hsp-reader { display: none; }
+.hsp-js.hsp-read #hsp-stage { display: none; }
+.hsp-js.hsp-read #hsp-reader { display: block; }
+
+.hsp-el {
+  position: absolute;
+  color: inherit;
+  text-decoration: none;
+}
 .hsp-gif { transform-origin: 50% 50%; }
 .hsp-gif img { display: block; }
+.hsp-text { overflow: hidden; }
+/* Text for a screen reader and nothing else: present, named, unpainted. */
+.hsp-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 
+/* Landing spots for the page's own in-page links. */
+.hsp-anchor { position: absolute; left: 0; width: 1px; height: 1px; }
+
+/* --------------------------------------------------------------- lettering */
+/* Every text element is two layers over one box: the characters themselves,
+   transparent, for anything that reads or searches the page; and one empty
+   span per glyph showing its cell of the sheet through a mask, for the eye.
+   Only the first carries text, so nothing is announced or found twice. */
+.hsp-line {
+  position: absolute;
+  white-space: pre;
+  color: transparent;
+  font-family: ui-monospace, "DejaVu Sans Mono", monospace;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.hsp-paint {
+  position: absolute;
+  inset: 0;
+  display: block;
+  pointer-events: none;
+}
+.hsp-g {
+  position: absolute;
+  image-rendering: pixelated;
+}
+.hsp-mask .hsp-g {
+  -webkit-mask-image: var(--sheet);
+          mask-image: var(--sheet);
+  -webkit-mask-position: var(--gp);
+          mask-position: var(--gp);
+  -webkit-mask-repeat: no-repeat;
+          mask-repeat: no-repeat;
+  background: currentColor;
+}
+/* `designelements` sheets are already coloured, and the game skips the
+   recolour for them, so they are drawn rather than masked. */
+.hsp-img .hsp-g {
+  background-image: var(--sheet);
+  background-position: var(--gp);
+  background-repeat: no-repeat;
+}
+
+/* No masks, no pixels: fall back to showing the real text instead of nothing. */
+@supports not ((-webkit-mask-image: url("")) or (mask-image: url(""))) {
+  .hsp-paint { display: none; }
+  .hsp-line { color: inherit; }
+  .hsp-text { overflow: visible; }
+}
+
+/* A high-contrast mode replaces every colour on the page, which would leave
+   the transparent reading layer painted over its own glyphs. Show the text and
+   drop the pixels: legibility is the whole point of asking for that mode. */
+@media (forced-colors: active) {
+  .hsp-paint { display: none; }
+  .hsp-line { color: CanvasText; }
+  .hsp-text { overflow: visible; }
+}
+
+/* ------------------------------------------------------------------ links */
 /* Hovering a link draws a marching-ants box around it, and only around the one
    under the pointer. In game that box is a nine-patch (`pagelinkgif-sheet0.png`)
    created per linked element, kept hidden until `Mouse.IsOverObject` holds.
@@ -51,7 +165,8 @@ img, canvas { image-rendering: pixelated; }
    Reproduced from the sprite: a 1px light-blue dash with a 1px dark drop shadow
    offset down-right, 2px on / 2px off, sitting 2px outside the element. Its four
    frames each shift the dashes one pixel clockwise at 8fps, so the 4px pattern
-   cycles twice a second. */
+   cycles twice a second. Keyboard focus gets the same box, so tabbing through a
+   page shows what a pointer would. */
 .hsp-link { cursor: pointer; }
 
 .hsp-link:hover::before,
@@ -67,6 +182,7 @@ img, canvas { image-rendering: pixelated; }
   background-repeat: repeat-x, repeat-y, repeat-x, repeat-y;
   animation: hsp-march 0.5s steps(4) infinite;
 }
+.hsp-link:focus-visible { outline: none; }
 
 /* The drop shadow sits one pixel down and right of the line itself. */
 .hsp-link:hover::before,
@@ -93,53 +209,193 @@ img, canvas { image-rendering: pixelated; }
   to { background-position: 4px 0, 100% 4px, -4px 100%, 0 -4px; }
 }
 @media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .hsp-toggle::before { transition: none; }
   .hsp-link:hover::before, .hsp-link:hover::after,
   .hsp-link:focus-visible::before, .hsp-link:focus-visible::after {
     animation: none;
   }
 }
 
-/* Keyboard help, hidden until asked for with "?". */
-#hsp-help {
-  position: fixed;
-  inset: auto 12px 12px auto;
-  z-index: 2147483000;
-  background: var(--panel);
-  border: 1px solid #333349;
-  padding: 10px 12px;
+/* ------------------------------------------------------------- control bar */
+/* Shut, this is one small button and nothing else, because the artwork is the
+   point. Open, it holds what the page is, what is playing, the controls and
+   the keys -- one place rather than a bar plus a panel you had to know about.
+   It sits above the stage and never over it. */
+.hsp-bar {
+  padding: 4px 10px;
+  background: var(--ground);
+  border-bottom: 2px solid var(--orange);
+  box-shadow: inset 0 1px 0 var(--raised);
   font-size: 11px;
-  line-height: 1.8;
-  color: var(--dim);
-  max-width: 20rem;
+  text-align: center;
 }
-#hsp-help[hidden] { display: none; }
-#hsp-help b { color: var(--ink); font-weight: 400; }
-#hsp-help kbd {
+.hsp-bar button, .hsp-bar .hsp-zoom { display: none; }   /* nothing to press without JS */
+.hsp-js .hsp-bar button { display: inline-block; }
+.hsp-js .hsp-bar .hsp-zoom { display: inline-flex; }
+
+/* An empty triangle: drawn, not written, so it is not read out as a character.
+   Orange, like the chevrons on the game's tab strip. */
+.hsp-toggle::before {
+  content: "";
+  display: inline-block;
+  width: 0;
+  height: 0;
+  margin-right: 6px;
+  border: 4px solid transparent;
+  border-left-color: var(--orange);
+  vertical-align: middle;
+  transition: transform .12s;
+}
+.hsp-toggle[aria-expanded="true"]::before { transform: rotate(90deg); }
+
+/* Shut by default -- but only once there is scripting to open it again. */
+.hsp-js #hsp-panel { display: none; }
+.hsp-js.hsp-open #hsp-panel { display: block; }
+#hsp-panel { max-width: 46rem; margin: 0 auto; padding-bottom: 2px; }
+#hsp-panel p { margin: 6px 0; }
+.hsp-info { color: var(--dim); }
+.hsp-info b { color: var(--ink); font-weight: 400; }
+.hsp-info a { color: var(--rail); }
+.hsp-info code { color: inherit; font-size: inherit; }
+.hsp-ctl { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+/* The keys only do anything with scripting, so only offer them then. */
+.hsp-keys { display: none; color: var(--dim); line-height: 2; }
+.hsp-js .hsp-keys { display: block; }
+
+/* Chunky bevel: lit on the top and left, cut away on the bottom and right,
+   and inverted while held -- the way every control in HypnOS is drawn. */
+.hsp-b {
+  min-height: 24px;
+  min-width: 24px;
+  padding: 2px 8px;
+  background: var(--panel);
+  border: 1px solid;
+  border-color: var(--peri) var(--deep) var(--deep) var(--peri);
+  color: var(--ink);
+  font: inherit;
+  text-decoration: none;
+  line-height: 20px;
+  cursor: pointer;
+}
+.hsp-b:hover {
+  background: var(--raised);
+  border-color: var(--rail) var(--deep) var(--deep) var(--rail);
+}
+.hsp-b:active {
+  background: var(--ground);
+  border-color: var(--deep) var(--peri) var(--peri) var(--deep);
+}
+.hsp-b[disabled] {
+  color: var(--peri);
+  cursor: default;
+  background: var(--ground);
+  border-color: var(--panel);
+}
+.hsp-zoom { display: inline-flex; align-items: center; gap: 4px; }
+#hsp-zval { min-width: 2.5em; text-align: center; color: var(--rail); }
+
+/* Keycaps are the game's inset fields: paper, sunk into the pane. */
+.hsp-keys kbd {
   display: inline-block;
   min-width: 1.4em;
   text-align: center;
-  background: #2b2b3d;
-  border: 1px solid #444461;
+  background: var(--paper);
+  color: var(--deep);
+  border: 1px solid var(--deep);
+  box-shadow: 1px 1px 0 var(--deep);
   padding: 0 4px;
-  color: var(--accent);
+  margin: 0 1px;
 }
-#hsp-help a { color: var(--accent); }
+
+/* -------------------------------------------------------------- text view */
+/* The same page as a document: it reflows, it takes the reader's own text
+   size, and its contrast is this stylesheet's rather than 1999's. Sizes are in
+   rem throughout so that a browser's font setting actually moves them. */
+#hsp-reader {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 4rem;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 1rem;
+  line-height: 1.6;
+}
+.hsp-doc h1 { font-size: 1.5rem; line-height: 1.25; margin: 0 0 .25rem; }
+.hsp-doc h2 { font-size: 1.2rem; line-height: 1.3; margin: 1.5rem 0 .5rem; }
+.hsp-doc .hsp-meta, .hsp-doc .hsp-tags { color: var(--dim); font-size: .85rem; margin: .25rem 0; }
+.hsp-doc .hsp-blurb { color: var(--ink); margin: .5rem 0; }
+.hsp-doc hr { border: 0; border-top: 1px solid var(--line); margin: 1.25rem 0; }
+.hsp-doc .hsp-p { white-space: pre-wrap; overflow-wrap: break-word; margin: .75rem 0; }
+.hsp-doc .hsp-art { margin: .75rem 0; display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.hsp-doc .hsp-art img { max-width: 100%; height: auto; }
+.hsp-doc a { color: var(--accent); }
+.hsp-doc a:hover { text-decoration-thickness: 2px; }
+.hsp-doc code { color: var(--dim); font-size: .85em; }
 
 /* ------------------------------------------------------------- index page */
-body.hsp-index { padding: 24px; max-width: 900px; margin: 0 auto; background: #14141c; }
-.hsp-index h1 { font-size: 18px; margin: 0 0 4px; }
-.hsp-index .sub { color: var(--dim); margin: 0 0 16px; }
+/* The listing is drawn as a HypnOS window: a pale blue frame around an indigo
+   pane, a title strip with the tab chevron and its orange rule, and the filter
+   as one of the game's sunken paper fields. */
+body.hsp-index { padding: 16px 12px 40px; background: var(--deep); }
+.hsp-win {
+  max-width: 900px;
+  margin: 0 auto;
+  background: var(--ground);
+  border: 2px solid var(--rail);
+  box-shadow: 0 0 0 1px var(--deep), 5px 5px 0 rgba(19, 6, 31, .55);
+}
+.hsp-win-bar {
+  margin: 0;
+  padding: 7px 12px;
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--ink);
+  background: var(--ground);
+  border-bottom: 2px solid var(--orange);
+  box-shadow: inset 0 1px 0 var(--raised);
+}
+.hsp-win-bar::before {
+  content: "";
+  display: inline-block;
+  width: 0; height: 0;
+  margin-right: 8px;
+  border: 5px solid transparent;
+  border-left-color: var(--orange);
+  vertical-align: middle;
+}
+.hsp-win-body { padding: 12px; }
+
+.hsp-index .sub { color: var(--dim); margin: 0 0 12px; }
+.hsp-index label { color: var(--ink); }
+.hsp-index code { color: var(--rail); }
+/* Sunken field: cut on the top and left, lit on the bottom and right. */
 .hsp-index input {
-  background: var(--panel); border: 1px solid #333349; color: var(--ink);
-  padding: 4px 8px; font: inherit; width: 260px; margin-left: 8px;
+  background: var(--paper);
+  color: var(--deep);
+  border: 1px solid;
+  border-color: var(--deep) var(--peri) var(--peri) var(--deep);
+  padding: 3px 6px;
+  font: inherit;
+  width: 260px;
+  max-width: 100%;
+  margin-left: 8px;
+  min-height: 24px;
 }
 .hsp-index ul { list-style: none; margin: 0; padding: 0; }
 .hsp-index li {
-  display: grid; grid-template-columns: 1fr auto auto; gap: 12px;
-  padding: 3px 6px; border-bottom: 1px solid #23233240;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 12px;
+  padding: 4px 8px;
+  border-bottom: 1px solid rgba(137, 144, 245, .22);
 }
-.hsp-index li:hover { background: var(--panel); }
-.hsp-index a { color: var(--accent); text-decoration: none; }
+.hsp-index li:hover {
+  background: var(--panel);
+  box-shadow: inset 3px 0 0 var(--orange);
+}
+/* Periwinkle is only 4.2:1 on the lit row, so the path brightens with it. */
+.hsp-index li:hover .p { color: var(--rail); }
+.hsp-index a { color: var(--rail); text-decoration: none; }
 .hsp-index a:hover { text-decoration: underline; }
-.hsp-index .p { color: var(--dim); font-size: 11px; }
-.hsp-index .au { color: #b48ead; font-size: 11px; }
+.hsp-index .p { color: var(--peri); font-size: 11px; }
+.hsp-index .au { color: #d99ae4; font-size: 11px; }

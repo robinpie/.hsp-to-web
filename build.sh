@@ -17,6 +17,8 @@ usage: ./build.sh <path-to-Hypnospace-Outlaw> [options]
   <path>            the game's install directory, or its data/ subdirectory
 
   --out DIR         where to write the site        (default: ./site)
+  --base-url URL    where the site will be served, e.g. https://example.com/hsp
+                    (fills in og:url and og:image so links preview properly)
   --copy-assets     copy referenced art/audio into the export instead of
                     symlinking the game's data/ (makes it movable/servable,
                     at the cost of disk)
@@ -46,6 +48,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --out)          out="$2"; shift 2;;
     --copy-assets)  conv_extra+=(--copy-assets); shift;;
+    --base-url)     conv_extra+=(--base-url "$2"); shift 2;;
     --no-music)     music=0; shift;;
     --pages)        shift; conv_extra+=(--pages)
                     while [ $# -gt 0 ] && [ "${1#--}" = "$1" ]; do conv_extra+=("$1"); shift; done;;

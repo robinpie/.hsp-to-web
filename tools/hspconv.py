@@ -9,7 +9,7 @@ See FORMAT.md for the format spec this implements.
 Produces a directory that can be opened straight from the filesystem
 (no server needed) or served statically.
 """
-import argparse, json, os, posixpath, re, shutil, sys
+import argparse, base64, json, os, posixpath, re, shutil, sys
 from collections import OrderedDict
 
 PAGEWIDTH = 300
@@ -173,20 +173,36 @@ def pick_state(el, flags):
     return el[chosen] if chosen < len(el) else el[1]
 
 
+# An address the browser can follow by itself. The game has no such link --
+# HypnOS only ever navigates to another .hsp -- so this is an extension for
+# pages written to be read on the web: it converts, but in game it does
+# nothing. Written either bare or as `webpage:https://...`.
+EXTERNAL_URL = re.compile(r'^(?:https?://|mailto:)', re.I)
+
+
 def parse_link(raw):
-    """`cmd:param|cmd:param`, or a bare page path."""
+    """`cmd:param|cmd:param`, a bare page path, or an external URL."""
     raw = (raw or '').strip()
     if raw in ('', '-1', '0'):
         return None
-    out = {'raw': raw, 'cmds': [], 'href': None, 'tooltip': None, 'anchor': None}
+    out = {'raw': raw, 'cmds': [], 'href': None, 'url': None,
+           'tooltip': None, 'anchor': None}
     for part in raw.split('|'):
-        if ':' in part:
+        if EXTERNAL_URL.match(part.strip()):
+            out['cmds'].append({'cmd': 'url', 'param': part.strip()})
+            if out['url'] is None:
+                out['url'] = part.strip()
+        elif ':' in part:
             cmd, _, param = part.partition(':')
             cl = cmd.strip().lower()
             # A Windows drive-ish or path-ish token is a bare link, not a command.
             out['cmds'].append({'cmd': cl, 'param': param})
             if cl == 'webpage':
-                out['href'] = param
+                if EXTERNAL_URL.match(param.strip()):
+                    if out['url'] is None:
+                        out['url'] = param.strip()
+                else:
+                    out['href'] = param
             elif cl == 'tooltip':
                 out['tooltip'] = param
             elif cl == 'anchor':
@@ -349,6 +365,7 @@ def parse_page(path, registry, flags, data_dir='', hsm=None):
             base.update({
                 'type': 'gif',
                 'gif': gname,
+                'kind': entry['kind'] if entry else None,
                 'frames': entry['frames'] if entry else [],
                 'fps': entry['fps'] if entry else 0,
                 'x': as_int(cell(s, 1)),
@@ -396,16 +413,123 @@ def parse_page(path, registry, flags, data_dir='', hsm=None):
 
 
 # --------------------------------------------------------------------------- #
+# text for people, not just for the glyph blitter
+# --------------------------------------------------------------------------- #
+def replace_text(v, player='Outlaw'):
+    """The runtime's escape expansion, mirrored from web/hsp.js.
+
+    `/n` is a newline, `/t` a tab, `/p` the player's name; doubling the slash
+    escapes the sequence. Needed here as well as in the browser because the
+    reader view and the <meta> descriptions are built without one.
+    """
+    if not v:
+        return ''
+    v = str(v)
+    v = v.replace('//n', '\x01').replace('//N', '\x02')
+    v = re.sub(r'/[nN]', '\n', v)
+    v = v.replace('//t', '\x03').replace('//T', '\x04')
+    v = re.sub(r'/[tT]', '\t', v)
+    v = v.replace('//p', '\x05').replace('//P', '\x06')
+    v = re.sub(r'/[pP]', player, v)
+    for marker, lit in zip('\x01\x02\x03\x04\x05\x06',
+                           ('/n', '/N', '/t', '/T', '/p', '/P')):
+        v = v.replace(marker, lit)
+    return v.replace('’', "'")
+
+
+def humanise(name):
+    """`dancing-baby_2` -> `dancing baby 2`, for use as alt text."""
+    return re.sub(r'[-_]+', ' ', str(name or '')).strip()
+
+
+# Names that only ever describe a piece of page furniture. An image called
+# `gradient-dither-fade2` tells a listener nothing they wanted to know, and
+# there are thousands of them; tune this list to taste.
+DECORATION = re.compile(
+    r'gradient|dither|fade|blank|spacer|divider|separator|border|shadow|filler'
+    r'|^bg[-_0-9]|[-_]bg$', re.I)
+
+
+def gif_alt(e):
+    """Alt text for an image element.
+
+    Order of preference: the author's own tooltip, then the title of the page
+    it links to, then the image's own name, tidied up. Shapes are rules and
+    panels and the decoration names above are furniture, so both are marked
+    decorative -- an image that is there to fill space should not be read out.
+    Anything that is a link keeps a name whatever it is called, because a link
+    with no accessible name is a dead end.
+    """
+    link = e.get('link') or {}
+    if link.get('tooltip'):
+        return replace_text(link['tooltip'])
+    if link.get('pageTitle'):
+        return 'link to ' + link['pageTitle']
+    name = e.get('gif') or ''
+    if link.get('href'):
+        return humanise(name)
+    if e.get('kind') == 'shape' or DECORATION.search(name):
+        return ''
+    return humanise(name) if e.get('kind') in ('gif', 'wordart', 'static') else ''
+
+
+def link_target(e, root=''):
+    """Where an element's link points, and whether it leaves the export.
+
+    Returns (href, external). An external link is handed to the browser as it
+    stands; everything else is resolved to a page inside the export.
+    """
+    link = e.get('link') or {}
+    if link.get('url'):
+        return link['url'], True
+    if link.get('page'):
+        return root + 'pages/' + link['page'], False
+    return None, False
+
+
+def reading_order(page):
+    """Elements top to bottom, left to right.
+
+    The array order is paint order, which is close to authoring order and not
+    much like reading order; rows are bucketed so that a caption beside an
+    image is not separated from it by a one-pixel difference in y.
+    """
+    return sorted(page['elements'],
+                  key=lambda e: (int(e.get('y') or 0) // 8, int(e.get('x') or 0)))
+
+
+def page_text(page, limit=0):
+    """Every string on the page, in reading order."""
+    out = []
+    for e in reading_order(page):
+        if e['type'] == 'text':
+            t = ' '.join(replace_text(e['text']).split())
+            if t:
+                out.append(t)
+                if limit and sum(len(x) + 1 for x in out) > limit:
+                    break
+    s = ' '.join(out)
+    if limit and len(s) > limit:
+        s = s[:limit].rsplit(' ', 1)[0] + '…'
+    return s
+
+
+# --------------------------------------------------------------------------- #
 # output
 # --------------------------------------------------------------------------- #
 HTML = """<!DOCTYPE html>
+<html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title}</title>
-<link rel="stylesheet" href="{root}lib/hsp.css">
+{meta}<link rel="stylesheet" href="{root}lib/hsp.css">
+<link rel="stylesheet" href="{root}lib/fonts.css">
+<script>document.documentElement.className = 'hsp-js';</script>
 <script src="{root}lib/hsp.js"></script>
 <body>
+{bar}<main id="hsp-main">
 <div id="hsp-stage"><div id="hsp-page"></div></div>
+{reader}</main>
 <script id="hsp-data" type="application/json">{data}</script>
 <script>HSP.boot({{root:{root_js}}});</script>
 """
@@ -416,7 +540,251 @@ def rel_root(depth):
 
 
 def html_escape(s):
-    return (s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;'))
+    return (str('' if s is None else s)
+            .replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;'))
+
+
+def attr(s):
+    return html_escape(s).replace('"', '&quot;')
+
+
+def music_label(mus):
+    if not mus:
+        return ''
+    bits = [b for b in (mus.get('title'), mus.get('artist')) if b]
+    return ' — '.join(bits) if bits else mus.get('source', '')
+
+
+def meta_tags(page, rel, base_url=''):
+    """Description and OpenGraph tags, so a link to a page previews as itself.
+
+    Relative og:image/og:url are not honoured by most scrapers, so those two
+    are only emitted when --base-url says where the export will live.
+    """
+    title = page['title'] or os.path.basename(rel)
+    desc = page['blurb'] or page_text(page, 200)
+    tags = ['<meta name="description" content="%s">' % attr(desc)] if desc else []
+    if page['author']:
+        tags.append('<meta name="author" content="%s">' % attr(page['author']))
+    if page['keywords']:
+        tags.append('<meta name="keywords" content="%s">' % attr(page['keywords']))
+    tags += ['<meta property="og:type" content="article">',
+             '<meta property="og:site_name" content="Hypnospace">',
+             '<meta property="og:title" content="%s">' % attr(title)]
+    if desc:
+        tags.append('<meta property="og:description" content="%s">' % attr(desc))
+    if base_url:
+        base = base_url.rstrip('/')
+        html = 'pages/' + os.path.splitext(rel)[0] + '.html'
+        tags.append('<meta property="og:url" content="%s/%s">' % (attr(base), attr(html)))
+        card = None
+        for e in reading_order(page):
+            if e['type'] == 'gif' and e.get('frames') and e.get('kind') != 'shape':
+                card = e['frames'][0]
+                break
+        if card is None and page['bg']:
+            card = page['bg']
+        if card:
+            tags.append('<meta property="og:image" content="%s/assets/%s">'
+                        % (attr(base), attr(card)))
+            tags.append('<meta property="og:image:alt" content="%s">' % attr(title))
+    tags.append('<meta name="twitter:card" content="summary">')
+    return ''.join(t + '\n' for t in tags)
+
+
+def bar_html(page, root):
+    """The strip above the page: what this page is, and what can be done to it.
+
+    Collapsed to a single button by default, because the artwork is the point
+    and a permanent chrome bar over it is not. Everything is in there --
+    title, author, path, what is playing, the controls and the keys -- rather
+    than split between a bar and a panel you have to know to ask for.
+    """
+    title = page['title'] or os.path.basename(page['path'])
+    mus = page.get('music')
+
+    info = ['<b>%s</b>' % html_escape(title)]
+    if page['author']:
+        info.append('@%s' % html_escape(page['author']))
+    # The path doubles as the way back to the listing.
+    info.append('<a href="%sindex.html"><code>%s</code></a>'
+                % (attr(root), html_escape(page['path'])))
+    if mus:
+        info.append('music: %s' % html_escape(music_label(mus)))
+
+    ctl = ['<button class="hsp-b" id="hsp-read-btn" type="button">Text view</button>',
+           '<button class="hsp-b" id="hsp-motion" type="button">Pause motion</button>']
+    if mus and mus.get('src'):
+        ctl.append('<button class="hsp-b" id="hsp-music" type="button" '
+                   'data-label="%s">Play music</button>' % attr(music_label(mus)))
+    ctl += ['<span class="hsp-zoom">',
+            '<button class="hsp-b" id="hsp-zout" type="button" aria-label="Zoom out">&minus;</button>',
+            '<span id="hsp-zval" aria-live="polite">1&times;</span>',
+            '<button class="hsp-b" id="hsp-zin" type="button" aria-label="Zoom in">+</button>',
+            '</span>']
+
+    keys = ('<kbd>t</kbd> text view &middot; <kbd>m</kbd> music &middot; '
+            '<kbd>p</kbd> motion &middot; <kbd>+</kbd> <kbd>&minus;</kbd> zoom '
+            '&middot; <kbd>0</kbd> fit &middot; <kbd>?</kbd> this bar')
+
+    return ('<div class="hsp-bar">'
+            '<button class="hsp-b hsp-toggle" id="hsp-bar-btn" type="button" '
+            'aria-expanded="false" aria-controls="hsp-panel">Page info &amp; controls</button>'
+            '<div id="hsp-panel">'
+            '<p class="hsp-info">%s</p>'
+            '<p class="hsp-ctl">%s</p>'
+            '<p class="hsp-keys">%s</p>'
+            '</div></div>\n'
+            % (' &middot; '.join(info), ''.join(ctl), keys))
+
+
+def reader_html(page, root):
+    """A plain-HTML rendering of the same page.
+
+    The pixel view is a fixed 300px canvas of 7px type: it cannot reflow, it
+    cannot honour a text size, and its contrast is whatever 1999 chose. This is
+    the version that can. It is also what a crawler, a reader mode and a
+    JavaScript-less browser get, so it is written by the converter rather than
+    assembled in the browser.
+    """
+    title = page['title'] or os.path.basename(page['path'])
+    out = ['<div id="hsp-reader"><article class="hsp-doc">',
+           '<h1>%s</h1>' % html_escape(title)]
+
+    meta = []
+    if page['author']:
+        meta.append('by @%s' % html_escape(page['author']))
+    meta.append('<code>%s</code>' % html_escape(page['path']))
+    if page.get('music'):
+        meta.append('music: %s' % html_escape(music_label(page['music'])))
+    out.append('<p class="hsp-meta">%s</p>' % ' · '.join(meta))
+    if page['blurb']:
+        out.append('<p class="hsp-blurb">%s</p>' % html_escape(page['blurb']))
+
+    body, art = [], []
+
+    def anchor(inner, href, external):
+        # A link that opens a new tab says so, for anyone who cannot see it
+        # happen. rel guards the opener either way.
+        if not external:
+            return '<a href="%s">%s</a>' % (attr(href), inner)
+        return ('<a href="%s" target="_blank" rel="noopener noreferrer">%s'
+                '<span class="hsp-sr"> (opens in a new tab)</span></a>'
+                % (attr(href), inner))
+
+    def flush_art():
+        if art:
+            body.append('<p class="hsp-art">%s</p>' % ''.join(art))
+            del art[:]
+
+    for e in reading_order(page):
+        href, external = link_target(e, root)
+        if e['type'] == 'text':
+            txt = replace_text(e['text'])
+            if not txt.strip():
+                continue
+            flush_art()
+            inner = html_escape(txt)
+            if href:
+                inner = anchor(inner, href, external)
+            tag = 'h2' if e.get('size') == 2 else 'p'
+            body.append('<%s class="hsp-p">%s</%s>' % (tag, inner, tag))
+        else:
+            alt = gif_alt(e)
+            if not alt and not href:
+                continue          # furniture: it means nothing without the layout
+            if e.get('frames'):
+                img = '<img src="%s%s" alt="%s" loading="lazy">' % (
+                    attr(root + 'assets/'), attr(e['frames'][0]), attr(alt))
+            elif href or alt:
+                img = html_escape(alt or humanise(e.get('gif')))
+            else:
+                continue
+            art.append(anchor(img, href, external) if href else img)
+    flush_art()
+
+    if body:
+        out.append('<hr>')
+        out += body
+    if page['keywords']:
+        out.append('<p class="hsp-tags">tags: %s</p>' % html_escape(page['keywords']))
+    out.append('</article></div>\n')
+    return ''.join(out)
+
+
+def font_css(out, fonts, data):
+    """One stylesheet of base64 glyph sheets, shared by every page.
+
+    The glyphs are painted with CSS masks, and a mask may not be loaded from a
+    foreign origin -- which is what every file:// URL is. Inlining them keeps
+    the export openable by double-clicking a page, as it has always been.
+    """
+    lines = ['/* SPDX-License-Identifier: CC0-1.0 */',
+             '/* Spritefont sheets, inlined so that CSS masks work over file://. */',
+             ':root {']
+    n = 0
+    for f in sorted(fonts, key=lambda f: f['css']):
+        path = os.path.join(data, f['sheet'])
+        try:
+            with open(path, 'rb') as fh:
+                b64 = base64.b64encode(fh.read()).decode('ascii')
+        except OSError:
+            continue
+        lines.append('  --f-%s: url(data:image/png;base64,%s);' % (f['css'], b64))
+        n += 1
+    lines.append('}')
+    os.makedirs(os.path.join(out, 'lib'), exist_ok=True)
+    with open(os.path.join(out, 'lib', 'fonts.css'), 'w', encoding='utf-8') as fh:
+        fh.write('\n'.join(lines) + '\n')
+    return n
+
+
+def write_page(out, page, rel, base_url=''):
+    """Emit one page's HTML. Shared with hsppack.py."""
+    dst = os.path.join(out, 'pages', os.path.splitext(rel.replace('/', os.sep))[0] + '.html')
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    root = rel_root(len(os.path.relpath(dst, out).split(os.sep)) - 1)
+    with open(dst, 'w', encoding='utf-8') as fh:
+        fh.write(HTML.format(
+            title=attr(page['title'] or os.path.basename(rel)),
+            meta=meta_tags(page, rel, base_url),
+            bar=bar_html(page, root),
+            reader=reader_html(page, root),
+            data=json.dumps(page, ensure_ascii=False).replace('</', '<\\/'),
+            root=root, root_js=json.dumps(root)))
+    return dst
+
+
+def resolve_page_links(pages, page_index):
+    """Point every link at the .html that answers it, and name the target."""
+    titles = {p['path']: (p['title'] or os.path.basename(p['path'])) for p in pages}
+    dead = []
+    for page in pages:
+        for link in [e['link'] for e in page['elements']] + [page['script']]:
+            if not link or not link.get('href'):
+                continue
+            hit = resolve_link(link['href'], page['path'], page_index)
+            link['page'] = os.path.splitext(hit)[0] + '.html' if hit else None
+            link['pageTitle'] = titles.get(hit) if hit else None
+            if hit is None:
+                dead.append(link['href'])
+    return dead
+
+
+def attach_fonts(page, fonts):
+    """Pair the page's text elements with their sheets, keyed for CSS."""
+    page['fonts'] = {}
+    missing = []
+    for e in page['elements']:
+        if e['type'] != 'text':
+            continue
+        f = fonts.get(e['font'])
+        if f is None:
+            missing.append(e['font'])
+            continue
+        f.setdefault('css', re.sub(r'[^a-z0-9_-]', '_', e['font']))
+        page['fonts'][e['font']] = f
+    return missing
 
 
 def main():
@@ -429,6 +797,9 @@ def main():
                     help='story flags to treat as true when resolving element states')
     ap.add_argument('--copy-assets', action='store_true',
                     help='copy referenced assets instead of symlinking data/')
+    ap.add_argument('--base-url', default='',
+                    help='where the export will be served, e.g. '
+                         'https://example.com/hsp -- enables og:url and og:image')
     ap.add_argument('--hsm', help='directory of rendered .hsm audio '
                     '(default <out>/media/hsm, produced by tools/hsmrender.py)')
     ap.add_argument('--limit', type=int, default=0)
@@ -468,24 +839,14 @@ def main():
         parsed.append(page)
 
     page_index = {p['path'].lower(): p['path'] for p in parsed}
-    dead = 0
-    for page in parsed:
-        for link in [e['link'] for e in page['elements']] + [page['script']]:
-            if not link or not link.get('href'):
-                continue
-            hit = resolve_link(link['href'], page['path'], page_index)
-            link['page'] = os.path.splitext(hit)[0] + '.html' if hit else None
-            if hit is None:
-                dead += 1
-    sys.stderr.write(f'  {dead} links with no matching page in this export\n')
+    dead = resolve_page_links(parsed, page_index)
+    sys.stderr.write(f'  {len(dead)} links with no matching page in this export\n')
 
-    used, index = set(), []
+    used, used_fonts, index = set(), {}, []
     for page in parsed:
-        rel = page['path'].replace('/', os.sep)
-        page['fonts'] = {e['font']: fonts[e['font']] for e in page['elements']
-                         if e['type'] == 'text' and e['font'] in fonts}
-
-        for f in page['fonts'].values():
+        attach_fonts(page, fonts)
+        for key, f in page['fonts'].items():
+            used_fonts[key] = f
             used.add(f['sheet'])
         if page['bg']:
             used.add(page['bg'])
@@ -495,17 +856,9 @@ def main():
         for e in page['elements']:
             used.update(e.get('frames', []))
 
-        dst = os.path.join(out, 'pages', os.path.splitext(rel)[0] + '.html')
-        os.makedirs(os.path.dirname(dst), exist_ok=True)
-        depth = len(os.path.relpath(dst, out).split(os.sep)) - 1
-        root_rel = rel_root(depth)
-        with open(dst, 'w', encoding='utf-8') as fh:
-            fh.write(HTML.format(
-                title=html_escape(page['title'] or os.path.basename(rel)),
-                data=json.dumps(page, ensure_ascii=False).replace('</', '<\\/'),
-                root=root_rel, root_js=json.dumps(root_rel)))
+        write_page(out, page, page['path'], args.base_url)
         index.append({'path': page['path'],
-                      'html': 'pages/' + os.path.splitext(rel)[0].replace(os.sep, '/') + '.html',
+                      'html': 'pages/' + os.path.splitext(page['path'])[0] + '.html',
                       'title': page['title'], 'author': page['author'],
                       'blurb': page['blurb'], 'n': len(page['elements'])})
 
@@ -528,12 +881,9 @@ def main():
     with open(os.path.join(out, 'index.json'), 'w', encoding='utf-8') as fh:
         json.dump(index, fh, ensure_ascii=False)
     write_index(out, index)
-
-    libsrc = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'web')
-    libdst = os.path.join(out, 'lib')
-    os.makedirs(libdst, exist_ok=True)
-    for f in os.listdir(libsrc):
-        shutil.copy2(os.path.join(libsrc, f), os.path.join(libdst, f))
+    copy_lib(out)
+    n = font_css(out, used_fonts.values(), data)
+    sys.stderr.write(f'  {n} font sheets inlined into lib/fonts.css\n')
 
     if missing_all:
         sys.stderr.write(f'note: {len(missing_all)} unresolved image names, e.g. '
@@ -541,18 +891,37 @@ def main():
     sys.stderr.write(f'wrote {len(index)} pages to {out}\n')
 
 
+def copy_lib(out):
+    libsrc = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'web')
+    libdst = os.path.join(out, 'lib')
+    os.makedirs(libdst, exist_ok=True)
+    for f in os.listdir(libsrc):
+        shutil.copy2(os.path.join(libsrc, f), os.path.join(libdst, f))
+
+
 INDEX_HTML = """<!DOCTYPE html>
+<html lang="en">
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hypnospace pages</title>
 <link rel="stylesheet" href="lib/hsp.css">
 <body class="hsp-index">
-<h1>Hypnospace Outlaw — {n} pages</h1>
-<p class="sub">Rendered from <code>.hsp</code> sources. <input id="q" placeholder="filter…" autofocus></p>
+<div class="hsp-win">
+<h1 class="hsp-win-bar">Hypnospace Outlaw &mdash; {n} pages</h1>
+<main class="hsp-win-body">
+<p class="sub">Rendered from <code>.hsp</code> sources.
+<label for="q">Filter</label> <input id="q" type="search" autocomplete="off"></p>
+<p class="sub" id="count" role="status">{n} pages</p>
 <ul id="list">{rows}</ul>
+</main>
+</div>
 <script>
-const q=document.getElementById('q'),items=[...document.querySelectorAll('#list li')];
-q.addEventListener('input',()=>{{const v=q.value.toLowerCase();
-  for(const li of items) li.hidden = v && !li.dataset.k.includes(v);}});
+const q=document.getElementById('q'),c=document.getElementById('count'),
+      items=[...document.querySelectorAll('#list li')];
+let t=0;
+q.addEventListener('input',()=>{{const v=q.value.toLowerCase();let n=0;
+  for(const li of items){{const hit=!v||li.dataset.k.includes(v);li.hidden=!hit;n+=hit;}}
+  clearTimeout(t);t=setTimeout(()=>{{c.textContent=n+(n===1?' page':' pages');}},250);}});
 </script>
 """
 
@@ -564,7 +933,7 @@ def write_index(out, index):
         rows.append(
             '<li data-k="{k}"><a href="{h}">{t}</a>'
             '<span class="p">{p}</span>{a}</li>'.format(
-                k=html_escape(key), h=html_escape(it['html']),
+                k=attr(key), h=attr(it['html']),
                 t=html_escape(it['title'] or '(untitled)'),
                 p=html_escape(it['path']),
                 a=('<span class="au">' + html_escape(it['author']) + '</span>') if it['author'] else ''))
