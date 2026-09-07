@@ -177,7 +177,30 @@ def pick_state(el, flags):
 # HypnOS only ever navigates to another .hsp -- so this is an extension for
 # pages written to be read on the web: it converts, but in game it does
 # nothing. Written either bare or as `webpage:https://...`.
-EXTERNAL_URL = re.compile(r'^(?:https?://|mailto:)', re.I)
+# The separators are loose because they have to be: the in-game Page Builder
+# saves this field through replace(text, "/", "\\"), so a URL typed into it
+# reaches us as `https:\\host\path` and there is no way to author the other
+# spelling from the editor at all.
+EXTERNAL_URL = re.compile(r'^(?:https?:[\\/]{0,2}|mailto:)(?=[^\\/])', re.I)
+
+
+def external_url(tok):
+    r"""`tok` as a URL the browser can follow, or None if it is not one.
+
+    This is the normal path, not a rescue: the Page Builder turns every `/`
+    in a link into `\`, so `https:\\host\path` is the spelling a page
+    written in the editor carries. Folding it back costs nothing -- a
+    backslash is not legal in a URL, and browsers fold it to `/` for http(s)
+    regardless -- and case is left alone, since a URL path is case-sensitive
+    even though the game lower-cases the ones it navigates itself.
+    """
+    tok = tok.strip()
+    if not EXTERNAL_URL.match(tok):
+        return None
+    scheme, _, rest = tok.partition(':')
+    if scheme.lower() == 'mailto':
+        return 'mailto:' + rest
+    return '%s://%s' % (scheme.lower(), rest.replace('\\', '/').lstrip('/'))
 
 
 def parse_link(raw):
@@ -188,19 +211,21 @@ def parse_link(raw):
     out = {'raw': raw, 'cmds': [], 'href': None, 'url': None,
            'tooltip': None, 'anchor': None}
     for part in raw.split('|'):
-        if EXTERNAL_URL.match(part.strip()):
-            out['cmds'].append({'cmd': 'url', 'param': part.strip()})
+        url = external_url(part)
+        if url:
+            out['cmds'].append({'cmd': 'url', 'param': url})
             if out['url'] is None:
-                out['url'] = part.strip()
+                out['url'] = url
         elif ':' in part:
             cmd, _, param = part.partition(':')
             cl = cmd.strip().lower()
             # A Windows drive-ish or path-ish token is a bare link, not a command.
             out['cmds'].append({'cmd': cl, 'param': param})
             if cl == 'webpage':
-                if EXTERNAL_URL.match(param.strip()):
+                url = external_url(param)
+                if url:
                     if out['url'] is None:
-                        out['url'] = param.strip()
+                        out['url'] = url
                 else:
                     out['href'] = param
             elif cl == 'tooltip':

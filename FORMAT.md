@@ -82,7 +82,7 @@ The page is `PAGEWIDTH = 300` px wide. Page height is `max(int(Webpage z[3]), 1)
 | 16 | rotation speed |
 | 18 | frame index: the still frame for static and button modes, or the start-frame offset while animating |
 | 19 | `1` = sync: the animation restarts in lockstep with every other synced gif |
-| 20 | animation mode: `0` loop, `-1` still (show frame `z[18]`), `-2` three-state button (`z[18]`, `+1` on hover, `+2` while held), `>0` animate only while hovered |
+| 20 | animation mode: `0` loop, `-1` still (show frame `z[18]`), `-2` three-state button (`z[18]`, `+1` on hover, `+2` while held), `>0` animate only while hovered -- at the gif's own frame rate (§6), or 15 fps if that is `0` |
 
 `sin()` takes degrees throughout (Construct 2 convention).
 
@@ -161,6 +161,8 @@ Command names are matched case-insensitively.
 HypnOS only ever navigates to another `.hsp`, so nothing in the shipped data links off Hypnospace and the format has no way to say so. `hspconv.py` accepts one anyway, for pages written to be read on the web: a link value beginning `http://`, `https://` or `mailto:` — bare, or as `webpage:https://…` — is passed to the browser as it stands. It becomes an ordinary `<a>` that opens in a new tab, with `rel="noopener noreferrer"` and a visually hidden "(opens in a new tab)" so it is announced.
 
 In game such a link does nothing. A page that uses one still loads and still converts; it just is not a link the original runtime can follow.
+
+The separators are read loosely, and that is the common case rather than a rescue: the in-game Page Builder saves the LINK / SCRIPT field through `replace(text, "/", "\")`, so a URL typed into the editor is stored as `https:\\host\path` and the forward-slash spelling cannot be authored there at all. Both convert to `https://host/path`. Case is preserved — a URL path is case-sensitive, even though `hsURL` lower-cases the in-game paths it navigates.
 
 ### Link rendering
 

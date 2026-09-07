@@ -432,7 +432,7 @@ class GifEl {
       // Frozen, but the hover and press frames stay: those are the user's own
       // doing, not something moving at them.
       if (d.animMode === -2) this.setFrame(base + (this.held ? 2 : this.hover ? 1 : 0));
-      else if (d.animMode > 0 && this.hover) this.advance(dt, 15);
+      else if (d.animMode > 0 && this.hover) this.advance(dt, this.hoverFps());
       else this.setFrame(base);
       return;
     }
@@ -447,11 +447,17 @@ class GifEl {
     } else if (d.animMode === -1) {
       this.setFrame(base);
     } else if (d.animMode > 0) {
-      if (this.hover) this.advance(dt, 15); else this.setFrame(base);
+      if (this.hover) this.advance(dt, this.hoverFps()); else this.setFrame(base);
     } else if (d.fps > 0 && this.frames.length > 1) {
       this.advance(dt, d.fps);
     }
     if (d.swayX !== null || d.swayY !== null || d.dither !== null || d.rotMode) this.render();
+  }
+  hoverFps() {
+    // A hover animation runs at the gif's own speed -- the game re-applies it
+    // every tick the pointer is away, and only reaches for 15 when that speed
+    // is 0, which is what a lone still image out of static/ or shapes/ has.
+    return this.d.fps > 0 ? this.d.fps : 15;
   }
   advance(dt, fps) {
     this.acc += dt * fps;
